@@ -1,4 +1,4 @@
-from news_engine import get_top_news_for_brief, format_news_post
+from news_engine import get_top_news_for_brief, format_news_post, published_ids, save_published_ids
 import asyncio
 import aiohttp
 from aiogram import Bot, Dispatcher, F
