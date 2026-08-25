@@ -7,6 +7,9 @@ from aiogram.filters import Command
 from dotenv import load_dotenv
 import os
 from datetime import datetime
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 
 pending_news = {}  # тимчасове сховище новин на апрув
 
@@ -18,6 +21,7 @@ CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 # ======================
 # Отримання курсів НБУ
 # ======================
@@ -227,9 +231,24 @@ async def skip_one(callback: CallbackQuery):
 # ======================
 # Запуск
 # ======================
+async def scheduled_brief():
+    text = await create_morning_brief()
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ APPROVED", callback_data="approve_brief"),
+            InlineKeyboardButton(text="❌ DECLINE", callback_data="skip_brief")
+        ]
+    ])
+    await bot.send_message(ADMIN_GROUP_ID, text, reply_markup=keyboard, parse_mode="HTML")
 async def main():
     print("Я заработал")
+
+    scheduler.add_job(scheduled_brief, CronTrigger(hour=7, minute=0))
+    scheduler.start()
+    print("Я уже работаю")
+
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
