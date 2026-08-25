@@ -249,13 +249,22 @@ async def scheduled_brief():
     await bot.send_message(ADMIN_GROUP_ID, text, reply_markup=keyboard, parse_mode="HTML")
 
 async def scheduled_news():
-    news_list = get_top_news_for_brief(8)
+    news_list = get_top_news_for_brief(10)
     
-    for news in news_list:
-        score = news.get("final_score", 0)
-        if score < 75:
-            continue
-            
+    # Розділяємо за важливістю
+    force_majeure = [n for n in news_list if n.get("final_score", 0) >= 90]
+    important = [n for n in news_list if 75 <= n.get("final_score", 0) < 90]
+    
+    to_publish = []
+    
+    # Форс-мажор — беремо до 3
+    to_publish.extend(force_majeure[:3])
+    
+    # Важливі — тільки 1 найкращу
+    if important:
+        to_publish.append(important[0])
+    
+    for news in to_publish:
         formatted = format_news_post(news)
         image_url = news.get("image_url")
         
@@ -264,13 +273,11 @@ async def scheduled_news():
                 await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
             else:
                 await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-
-            published_ids.add(news["event_id"])
-            save_published_ids(published_ids)
         except:
             await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-            published_ids.add(news["event_id"])
-            save_published_ids(published_ids)
+        
+        published_ids.add(news["event_id"])
+        save_published_ids(published_ids)
             
 async def main():
     print("Я заработал")
