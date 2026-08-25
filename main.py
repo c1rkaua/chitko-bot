@@ -240,10 +240,31 @@ async def scheduled_brief():
         ]
     ])
     await bot.send_message(ADMIN_GROUP_ID, text, reply_markup=keyboard, parse_mode="HTML")
+
+async def scheduled_news():
+    news_list = get_top_news_for_brief(8)
+    
+    for news in news_list:
+        score = news.get("final_score", 0)
+        if score < 75:
+            continue
+            
+        formatted = format_news_post(news)
+        image_url = news.get("image_url")
+        
+        try:
+            if image_url:
+                await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
+            else:
+                await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+        except:
+            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+            
 async def main():
     print("Я заработал")
 
     scheduler.add_job(scheduled_brief, CronTrigger(hour=7, minute=0))
+    scheduler.add_job(scheduled_news, 'interval', minutes=30)
     scheduler.start()
     print("Я уже работаю")
 
