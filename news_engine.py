@@ -284,42 +284,48 @@ def get_top_news_for_brief(count: int = 4) -> list:
 # ====================== ТЕСТ ======================
 def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
-    text = news.get("text_chitko", "").strip()
+    text = news.get("text_chitko", news.get("summary", "")).strip()
     
-    # Визначаємо емодзі
+    # Прибираємо зайве
+    text = text.replace("\n", " ").strip()
+    
+    # Розбиваємо на речення
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+    
+    # Формуємо живий текст
+    if len(sentences) >= 3:
+        main = " ".join(sentences[:2])
+        details = " ".join(sentences[2:4])
+    elif len(sentences) == 2:
+        main = sentences[0]
+        details = sentences[1]
+    elif len(sentences) == 1:
+        main = sentences[0]
+        details = ""
+    else:
+        main = text[:280]
+        details = ""
+    
+    # Емодзі за темою
     title_lower = title.lower()
-    if any(w in title_lower for w in ["удар", "дрон", "ракет", "обстріл", "вибух"]):
+    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух"]):
         emoji = "⚡️"
-    elif any(w in title_lower for w in ["фронт", "зсу", "бій", "наступ"]):
-        emoji = "⚔️"
-    elif any(w in title_lower for w in ["нбу", "курс", "цін", "економік", "бюджет"]):
-        emoji = "💰"
-    elif any(w in title_lower for w in ["енерго", "світло", "відключен", "блекаут"]):
+    elif any(w in title_lower for w in ["тцк", "мобілізац", "повістк"]):
+        emoji = "⚠️"
+    elif any(w in title_lower for w in ["загибл", "поранен"]):
+        emoji = "🕯"
+    elif any(w in title_lower for w in ["енерго", "відключен", "світло"]):
         emoji = "🔌"
-    elif any(w in title_lower for w in ["президент", "кабмін", "рада", "закон"]):
-        emoji = "🏛"
-    elif any(w in title_lower for w in ["дтп", "аварі", "пожеж", "загибл"]):
-        emoji = "🚨"
     else:
         emoji = "▪️"
     
-    # Розбиваємо текст
-    sentences = [s.strip() for s in text.replace("!", ".").replace("?", ".").split(".") if s.strip()]
+    # Збираємо пост
+    post = f"{emoji} <b>{title}</b>\n\n{main}"
     
-    if len(sentences) >= 2:
-        main_fact = sentences[0] + "."
-        quote = sentences[1] + "."
-    elif len(sentences) == 1:
-        main_fact = sentences[0] + "."
-        quote = ""
-    else:
-        main_fact = text
-        quote = ""
-    
-    post = f"{emoji} <b>{title}</b>\n\n{main_fact}"
-    
-    if quote:
-        post += f"\n\n<blockquote>{quote}</blockquote>"
+    if details:
+        post += f"\n\n{details}"
     
     post += "\n\n<b>ЧІТКО</b>"
     
