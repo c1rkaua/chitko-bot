@@ -135,37 +135,44 @@ async def cmd_news(message: Message):
     news_list = get_top_news_for_brief(10)
     auto_published = 0
     
-    for news in news_list:
-        score = news.get("final_score", 0)
+    # Розділяємо
+    force = [n for n in news_list if n.get("final_score", 0) >= 90]
+    important = [n for n in news_list if 75 <= n.get("final_score", 0) < 90]
+    for_approval = [n for n in news_list if 50 <= n.get("final_score", 0) < 75]
+    
+    # Автопублікація: форс-мажор (до 2) + 1 важлива
+    to_auto = force[:2]
+    if important:
+        to_auto.append(important[0])
+    
+    for news in to_auto:
         formatted = format_news_post(news)
         image_url = news.get("image_url")
         
-        if score >= 85:
-            # Автопублікація
-            try:
-                if image_url:
-                    await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
-                else:
-                    await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-                auto_published += 1
-                published_ids.add(news["event_id"])
-                save_published_ids(published_ids)
-            except:
+        try:
+            if image_url:
+                await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
+            else:
                 await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-                auto_published += 1
-                published_ids.add(news["event_id"])
-                save_published_ids(published_ids)
-        else:
-            # На апрув
-            pending_news[news["event_id"]] = news
-            
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="✅ APPROVED", callback_data=f"approve_one_{news['event_id']}"),
-                InlineKeyboardButton(text="❌ DECLINE", callback_data=f"skip_one_{news['event_id']}")
-            ]])
-            
-            preview = f"<b>Score: {score}</b>\n\n{formatted}"
-            await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
+        except:
+            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+        
+        published_ids.add(news["event_id"])
+        save_published_ids(published_ids)
+        auto_published += 1
+    
+    # На апрув
+    for news in (important[1:] + for_approval)[:6]:
+        pending_news[news["event_id"]] = news
+        
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Апрув", callback_data=f"approve_one_{news['event_id']}"),
+            InlineKeyboardButton(text="❌ Скіп", callback_data=f"skip_one_{news['event_id']}")
+        ]])
+        
+        score = news.get("final_score", 0)
+        preview = f"<b>Score: {score}</b>\n\n{format_news_post(news)}"
+        await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
     
     await message.answer(f"Готово. Автоматично опубліковано: {auto_published}")
 # ======================
