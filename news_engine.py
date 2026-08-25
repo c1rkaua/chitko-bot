@@ -3,6 +3,7 @@ import hashlib
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
 import re
+published_ids = set()
 
 # ====================== ДЖЕРЕЛА ======================
 RSS_SOURCES = {
@@ -233,7 +234,19 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
             seen.add(item["event_id"])
             unique_news.append(item)
 
-    return unique_news
+    # Антидубль
+    final_news = []
+    for item in unique_news:
+        if item["event_id"] not in published_ids:
+            final_news.append(item)
+            published_ids.add(item["event_id"])
+    
+    # Обмежуємо розмір, щоб не рости безкінечно
+    if len(published_ids) > 500:
+        published_ids.clear()
+    
+    return final_news       
+
       
 def get_top_news_for_brief(count: int = 4) -> list:
     """
