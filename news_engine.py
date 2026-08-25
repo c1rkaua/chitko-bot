@@ -22,6 +22,14 @@ def save_published_ids(ids):
         json.dump(list(ids)[-400:], f)
 
 published_ids = load_published_ids()
+def is_similar_title(title1: str, title2: str) -> bool:
+    t1 = set(title1.lower().split())
+    t2 = set(title2.lower().split())
+    if not t1 or not t2:
+        return False
+    intersection = len(t1 & t2)
+    union = len(t1 | t2)
+    return (intersection / union) > 0.6
 
 # ====================== ДЖЕРЕЛА ======================
 RSS_SOURCES = {
@@ -257,29 +265,38 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
     # Сортуємо за final_score
     all_news.sort(key=lambda x: x["final_score"], reverse=True)
     
-    # Проста дедуплікація за event_id
+    # Дедуплікація за event_id
     seen = set()
     unique_news = []
     for item in all_news:
         if item["event_id"] not in seen:
             seen.add(item["event_id"])
             unique_news.append(item)
-
-    # Антидубль (тільки перевіряємо, не додаємо)
+    
+    # Антидубль: event_id + схожість заголовків
+    def is_similar(t1, t2):
+        s1 = set(t1.lower().split())
+        s2 = set(t2.lower().split())
+        if not s1 or not s2:
+            return False
+        return len(s1 & s2) / len(s1 | s2) > 0.55
+    
     final_news = []
     for item in unique_news:
-        if item["event_id"] not in published_ids:
+        if item["event_id"] in published_ids:
+            continue
+        
+        title = item.get("title_original", "")
+        is_dup = False
+        for existing in final_news:
+            if is_similar(title, existing.get("title_original", "")):
+                is_dup = True
+                break
+        
+        if not is_dup:
             final_news.append(item)
     
-    return final_news       
-
-      
-def get_top_news_for_brief(count: int = 4) -> list:
-    """
-    Повертає топ-N новин для ранкового бріфу.
-    """
-    news = fetch_and_score_news()
-    return news[:count]
+    return final_news
 
 # ====================== ТЕСТ ======================
 def format_news_post(news: dict) -> str:
