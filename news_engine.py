@@ -14,13 +14,28 @@ RSS_SOURCES = {
     "Ukrainska Pravda": {
         "url": "https://www.pravda.com.ua/rss/",
         "trust": 9.6,
+        "class": "A"
+    },
+    "Babel": {
+        "url": "https://babel.ua/rss",
+        "trust": 9.4,
         "class": "A-"
+    },
+    "Hromadske": {
+        "url": "https://hromadske.ua/rss",
+        "trust": 9.3,
+        "class": "A-"
+    },
+    "Radio Svoboda": {
+        "url": "https://www.radiosvoboda.org/api/z-pqoilerttqi",
+        "trust": 9.5,
+        "class": "A"
     },
     "Ukrinform": {
         "url": "https://www.ukrinform.ua/rss/news",
         "trust": 9.0,
         "class": "B+"
-    },
+    }
 }
 
 # ====================== ДОПОМІЖНІ ФУНКЦІЇ ======================
@@ -62,21 +77,47 @@ def calculate_freshness(published_at: datetime) -> float:
 
 def calculate_importance(title: str, source_trust: float) -> int:
     title_lower = title.lower()
-    score = 55  # підняли базовий бал
+    score = 50  # базовий бал
 
-    high_impact_keywords = [
-        "ракет", "балістик", "удар", "обстріл", "загибл", "поранен",
-        "нбу", "обліков", "курс", "відключен", "енерго", "блекаут",
-        "мобілізац", "тцк", "президент", "кабмін", "генштаб",
-        "переговор", "санкц", "допомог", "пакет", "фронт", "зсу",
-        "дснс", "вибух", "повітряні сили", "ппо"
-    ]
-    
-    for word in high_impact_keywords:
-        if word in title_lower:
-            score += 6
+    # Критичні події
+    critical = ["ракет", "балістик", "дрон", "удар", "обстріл", "вибух", "шахед"]
+    for w in critical:
+        if w in title_lower:
+            score += 22
 
-    score += int(source_trust * 1.5)
+    # Жертви
+    victims = ["загибл", "поранен", "загинув", "загинула", "вбито"]
+    for w in victims:
+        if w in title_lower:
+            score += 18
+
+    # Війна / фронт
+    war = ["фронт", "зсу", "генштаб", "повітряні сили", "ппо", "наступ", "бої"]
+    for w in war:
+        if w in title_lower:
+            score += 15
+
+    # Влада / політика
+    power = ["президент", "зеленськ", "кабмін", "рада", "закон", "указ"]
+    for w in power:
+        if w in title_lower:
+            score += 14
+
+    # Економіка / енергетика
+    economy = ["нбу", "курс", "долар", "євро", "енерго", "відключен", "блекаут", "світло"]
+    for w in economy:
+        if w in title_lower:
+            score += 14
+
+    # Мобілізація / ТЦК
+    mob = ["мобілізац", "тцк", "повістк"]
+    for w in mob:
+        if w in title_lower:
+            score += 12
+
+    # Довіра до джерела
+    score += int(source_trust * 8)
+
     return max(0, min(100, score))
 
 
@@ -94,11 +135,11 @@ def calculate_confidence(source_trust: float, source_class: str) -> int:
 
 
 def classify_news(final_score: float) -> str:
-    if final_score >= 75:
+    if final_score >= 80:
         return "BREAKING"
-    elif final_score >= 60:
+    elif final_score >= 65:
         return "IMPORTANT"
-    elif final_score >= 45:
+    elif final_score >= 50:
         return "NORMAL"
     else:
         return "LOW"
