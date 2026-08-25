@@ -3,7 +3,25 @@ import hashlib
 from datetime import datetime, timezone
 from dateutil import parser as date_parser
 import re
-published_ids = set()
+import json
+import os
+
+PUBLISHED_FILE = "published_ids.json"
+
+def load_published_ids():
+    if os.path.exists(PUBLISHED_FILE):
+        try:
+            with open(PUBLISHED_FILE, "r") as f:
+                return set(json.load(f))
+        except:
+            return set()
+    return set()
+
+def save_published_ids(ids):
+    with open(PUBLISHED_FILE, "w") as f:
+        json.dump(list(ids)[-400:], f)
+
+published_ids = load_published_ids()
 
 # ====================== ДЖЕРЕЛА ======================
 RSS_SOURCES = {
@@ -234,16 +252,11 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
             seen.add(item["event_id"])
             unique_news.append(item)
 
-    # Антидубль
+    # Антидубль (тільки перевіряємо, не додаємо)
     final_news = []
     for item in unique_news:
         if item["event_id"] not in published_ids:
             final_news.append(item)
-            published_ids.add(item["event_id"])
-    
-    # Обмежуємо розмір, щоб не рости безкінечно
-    if len(published_ids) > 500:
-        published_ids.clear()
     
     return final_news       
 

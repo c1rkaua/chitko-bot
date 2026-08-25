@@ -148,9 +148,13 @@ async def cmd_news(message: Message):
                 else:
                     await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
                 auto_published += 1
+                published_ids.add(news["event_id"])
+                save_published_ids(published_ids)
             except:
                 await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
                 auto_published += 1
+                published_ids.add(news["event_id"])
+                save_published_ids(published_ids)
         else:
             # На апрув
             pending_news[news["event_id"]] = news
@@ -215,6 +219,9 @@ async def approve_one(callback: CallbackQuery):
             await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
     except:
         await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+
+    published_ids.add(news["event_id"])
+    save_published_ids(published_ids)
     
     if event_id in pending_news:
         del pending_news[event_id]
@@ -257,8 +264,13 @@ async def scheduled_news():
                 await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
             else:
                 await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+
+            published_ids.add(news["event_id"])
+            save_published_ids(published_ids)
         except:
             await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+            published_ids.add(news["event_id"])
+            save_published_ids(published_ids)
             
 async def main():
     print("Я заработал")
