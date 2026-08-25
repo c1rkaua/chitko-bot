@@ -96,46 +96,59 @@ def calculate_freshness(published_at: datetime) -> float:
 
 def calculate_importance(title: str, source_trust: float) -> int:
     title_lower = title.lower()
-    score = 50  # базовий бал
+    score = 48  # базовий бал
 
-    # Критичні події
-    critical = ["ракет", "балістик", "дрон", "удар", "обстріл", "вибух", "шахед"]
-    for w in critical:
+    # 1. Форс-мажор
+    force = ["ракет", "балістик", "дрон", "удар", "обстріл", "вибух", "шахед", "масован", "искандер", "циркон"]
+    for w in force:
+        if w in title_lower:
+            score += 28
+            break
+
+    # 2. ТЦК / мобілізація
+    tck = ["тцк", "мобілізац", "повістк", "бусифікац", "рейд", "схопил", "незаконн"]
+    for w in tck:
         if w in title_lower:
             score += 22
+            break
 
-    # Жертви
-    victims = ["загибл", "поранен", "загинув", "загинула", "вбито"]
+    # 3. Жертви
+    victims = ["загибл", "поранен", "загинув", "загинула", "вбито", "еваку", "ДТП"]
     for w in victims:
         if w in title_lower:
-            score += 18
+            score += 20
+            break
 
-    # Війна / фронт
+    # 4. Енергетика
+    energy = ["енерго", "відключен", "блекаут", "світло", "електро"]
+    for w in energy:
+        if w in title_lower:
+            score += 18
+            break
+
+    # 5. Фронт / ЗСУ
     war = ["фронт", "зсу", "генштаб", "повітряні сили", "ппо", "наступ", "бої"]
     for w in war:
         if w in title_lower:
-            score += 15
+            score += 16
+            break
 
-    # Влада / політика
+    # 6. Влада
     power = ["президент", "зеленськ", "кабмін", "рада", "закон", "указ"]
     for w in power:
         if w in title_lower:
-            score += 14
+            score += 15
+            break
 
-    # Економіка / енергетика
-    economy = ["нбу", "курс", "долар", "євро", "енерго", "відключен", "блекаут", "світло"]
+    # 7. Економіка
+    economy = ["нбу", "курс", "долар", "євро", "цін", "бюджет"]
     for w in economy:
         if w in title_lower:
-            score += 14
-
-    # Мобілізація / ТЦК
-    mob = ["мобілізац", "тцк", "повістк"]
-    for w in mob:
-        if w in title_lower:
             score += 12
+            break
 
-    # Довіра до джерела
-    score += int(source_trust * 8)
+    # Бонус від джерела
+    score += int(source_trust * 6)
 
     return max(0, min(100, score))
 
