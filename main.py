@@ -248,34 +248,32 @@ async def approve_brief(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Добавил на канал ✅")
 
-@dp.callback_query(F.data.startswith("approve_one_"))
+@dp.callback_query(lambda c: c.data and c.data.startswith("approve_one_"))
 async def approve_one(callback: CallbackQuery):
     event_id = callback.data.replace("approve_one_", "")
     news = pending_news.get(event_id)
-    
+
     if not news:
-        await callback.answer("Старая новость")
+        await callback.answer("Стара новина", show_alert=True)
         return
-    
+
+    if news.get("final_score", 0) >= 90 and news.get("source_url"):
+        try:
+            full_text = fetch_article_text_sync(news["source_url"])
+            if full_text and len(full_text) > 120:
+                news["text_chitko"] = full_text
+        except Exception:
+            pass
+
     formatted = format_news_post(news)
-    image_url = news.get("image_url")
-    
-    try:
-        if image_url:
-            await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
-        else:
-            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-    except:
-        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    await send_news_to_channel(news, formatted)
 
     published_ids.add(news["event_id"])
     save_published_ids(published_ids)
-    
-    if event_id in pending_news:
-        del pending_news[event_id]
-    
+    pending_news.pop(event_id, None)
+
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Опубликовано ✅")
+    await callback.answer("Опубликовано")
 
 
 @dp.callback_query(F.data.startswith("skip_one_"))
