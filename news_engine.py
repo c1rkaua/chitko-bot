@@ -266,11 +266,11 @@ def select_for_publish(news_list: list) -> list:
         # Спорт — ніколи в авто
         if cat == "sport":
             continue
-        # Інше — тільки дуже сильне
-        if cat == "other" and score < 85:
+        # Інше — від 55
+        if cat == "other" and score < 55:
             continue
-        # Загальний мінімум
-        if score < 78:
+        # Загальний мінімум для авто-кандидатів
+        if score < 55:
             continue
 
         candidates.append(n)
@@ -280,36 +280,19 @@ def select_for_publish(news_list: list) -> list:
 
     candidates.sort(key=lambda x: x.get("final_score", 0), reverse=True)
 
+    # Поки що беремо топ-1 завжди, топ-2 якщо обидві >= 80
     selected = [candidates[0]]
 
-    # Друга новина — тільки якщо обидві дуже сильні і різні категорії
     if len(candidates) > 1:
         second = candidates[1]
         if (
-            candidates[0].get("final_score", 0) >= 90
-            and second.get("final_score", 0) >= 90
+            second.get("final_score", 0) >= 80
             and candidates[0].get("category") != second.get("category")
         ):
             selected.append(second)
 
     return selected
 
-    candidates.sort(key=lambda x: x.get("final_score", 0), reverse=True)
-
-    top = candidates[0]
-    selected = [top]
-
-    # Друга тільки якщо обидві дуже сильні і різні теми
-    if len(candidates) > 1:
-        second = candidates[1]
-        if (
-            top.get("final_score", 0) >= 90
-            and second.get("final_score", 0) >= 90
-            and top.get("category") != second.get("category")
-        ):
-            selected.append(second)
-
-    return selected
 
 def fetch_and_score_news(limit_per_source: int = 8) -> list:
     all_news = []

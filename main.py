@@ -191,7 +191,7 @@ async def cmd_news(message: Message):
     auto_ids = {n["event_id"] for n in to_auto}
     for_approval = [
         n for n in news_list
-        if n["event_id"] not in auto_ids and n.get("final_score", 0) >= 60
+        if n["event_id"] not in auto_ids and n.get("final_score", 0) >= 45
     ][:5]
 
     for news in for_approval:
