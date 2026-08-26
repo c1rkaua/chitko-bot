@@ -501,28 +501,28 @@ def apply_watermark(image_path: str, output_path: str) -> str:
         print(f"Watermark error: {e}")
         return image_path
 
-def prepare_image_with_watermark(image_url: str) -> str | None:
-    """
-    Скачує фото, ставить watermark ЧІТКО, повертає шлях до файлу.
-    Якщо не вийшло — None.
-    """
+def prepare_image_with_watermark(image_url: str):
+    print(f"WM: start {str(image_url)[:100]}")
     try:
         import requests
         import tempfile
         import os
 
-        resp = requests.get(image_url, timeout=10)
+        resp = requests.get(image_url, timeout=12, headers={"User-Agent": "Mozilla/5.0"})
+        print(f"WM: download status {resp.status_code}")
         if resp.status_code != 200:
             return None
 
         tmp_in = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         tmp_in.write(resp.content)
         tmp_in.close()
+        print(f"WM: saved input {tmp_in.name}")
 
         tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         tmp_out.close()
 
         result = apply_watermark(tmp_in.name, tmp_out.name)
+        print(f"WM: watermark done {result}")
 
         try:
             os.unlink(tmp_in.name)
@@ -531,7 +531,7 @@ def prepare_image_with_watermark(image_url: str) -> str | None:
 
         return result
     except Exception as e:
-        print(f"prepare_image error: {e}")
+        print(f"WM: error {e}")
         return None
 
 def format_news_post(news: dict) -> str:
