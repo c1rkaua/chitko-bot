@@ -51,29 +51,27 @@ async def get_fuel_prices():
 # ======================
 async def create_morning_brief():
     from datetime import datetime
+    import pytz
     
-    # Курси і паливо (поки залишаємо як було)
-    usd = "44,61"
-    eur = "52,13"
-    a95 = "80,50"
-    dp = "91,80"
-    gas = "43,20"
+    # Курси і паливо (поки заглушки)
+    usd = "41,25"
+    eur = "44,80"
+    a95 = "58,40"
+    dp = "56,10"
+    gas = "34,20"
     
-        # Реальні новини
     news_list = get_top_news_for_brief(4)
     
-    news_text = ""
+    news_lines = []
     for i, news in enumerate(news_list, 1):
-        # Поки для бріфу залишаємо короткий варіант
-        news_text += f"{i}. {news['title_chitko']}\n"
+        title = news.get("title_chitko", news.get("title_original", "")).strip()
+        news_lines.append(f"{i}. {title}")
     
-    if not news_text:
-        news_text = "1. Новини оновлюються...\n"
+    news_text = "\n".join(news_lines) if news_lines else "1. Новини оновлюються..."
     
-    today = datetime.now().strftime("%d.%m.%Y")
-    weekday = datetime.now().strftime("%A")
+    now = datetime.now(pytz.timezone("Europe/Kyiv"))
+    today = now.strftime("%d.%m.%Y")
     
-    # Українські дні тижня
     days = {
         "Monday": "понеділок",
         "Tuesday": "вівторок",
@@ -83,25 +81,22 @@ async def create_morning_brief():
         "Saturday": "субота",
         "Sunday": "неділя"
     }
-    weekday_ua = days.get(weekday, weekday)
+    weekday_ua = days.get(now.strftime("%A"), "")
     
-    text = f"""<b>ЧІТКО</b>
-{today} • {weekday_ua}
-
-Доброго ранку
-
-<b>КУРСИ ВАЛЮТ</b>
-USD  {usd} ₴
-EUR  {eur} ₴
-
-<b>ПАЛИВО</b>
-A-95  {a95} ₴/л
-ДП    {dp} ₴/л
-ГАЗ   {gas} ₴/л
-
-<b>ГОЛОВНЕ ЗА РАНОК</b>
-{news_text}
-ЧІТКО. КОРОТКО. ПО СУТІ."""
+    text = (
+        f"<b>ЧІТКО • Ранковий бріф</b>\n"
+        f"{today} • {weekday_ua}\n\n"
+        f"<b>КУРС НБУ</b>\n"
+        f"$ {usd}\n"
+        f"€ {eur}\n\n"
+        f"<b>ПАЛИВО</b>\n"
+        f"А-95 — {a95} ₴\n"
+        f"ДП — {dp} ₴\n"
+        f"Газ — {gas} ₴\n\n"
+        f"<b>ГОЛОВНЕ ЗА НІЧ</b>\n"
+        f"{news_text}\n\n"
+        f"<b>ЧІТКО. Коротко. По суті.</b>"
+    )
     
     return text
     
