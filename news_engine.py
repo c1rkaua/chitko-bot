@@ -455,46 +455,6 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
 
     return final_news
 
-        except Exception as e:
-            print(f"Помилка при читанні {source_name}: {e}")
-            continue
-
-    # Сортування
-    all_news.sort(key=lambda x: x["final_score"], reverse=True)
-
-    # Дедуп по event_id
-    seen = set()
-    unique_news = []
-    for item in all_news:
-        if item["event_id"] not in seen:
-            seen.add(item["event_id"])
-            unique_news.append(item)
-
-    # Антидубль + схожі заголовки
-    def is_similar(t1, t2):
-        s1 = set(t1.lower().split())
-        s2 = set(t2.lower().split())
-        if not s1 or not s2:
-            return False
-        return len(s1 & s2) / len(s1 | s2) > 0.55
-
-    final_news = []
-    for item in unique_news:
-        if item["event_id"] in published_ids:
-            continue
-
-        title = item.get("title_original", "")
-        is_dup = False
-        for existing in final_news:
-            if is_similar(title, existing.get("title_original", "")):
-                is_dup = True
-                break
-
-        if not is_dup:
-            final_news.append(item)
-
-    return final_news
-
 def get_top_news_for_brief(count: int = 4) -> list:
     news = fetch_and_score_news()
     return news[:count]
