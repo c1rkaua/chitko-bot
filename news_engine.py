@@ -455,6 +455,8 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
             seen.add(item["event_id"])
             unique_news.append(item)
 
+    recent_titles = load_recent_titles()
+
     def is_similar(t1, t2):
         s1 = set(t1.lower().split())
         s2 = set(t2.lower().split())
@@ -469,6 +471,7 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
 
         title = item.get("title_original", "")
         is_dup = False
+
         for existing in final_news:
             if is_similar(title, existing.get("title_original", "")):
                 is_dup = True
@@ -486,8 +489,7 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
         if not is_dup:
             final_news.append(item)
 
-    return final_news  
-
+    return final_news
 
 def get_top_news_for_brief(count: int = 4) -> list:
     news = fetch_and_score_news()
