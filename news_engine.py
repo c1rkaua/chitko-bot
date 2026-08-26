@@ -479,8 +479,8 @@ def apply_watermark(image_path: str, output_path: str) -> str:
         td = ImageDraw.Draw(only_text)
 
         # Тінь + текст (помітніше)
-        td.text((12, 12), text, font=font, fill=(0, 0, 0, 90))
-        td.text((10, 10), text, font=font, fill=(255, 255, 255, 120))
+        td.text((12, 12), text, font=font, fill=(0, 0, 0, 110))
+        td.text((10, 10), text, font=font, fill=(255, 255, 255, 160))
 
         rotated = only_text.rotate(28, expand=True, resample=Image.BICUBIC)
         rw, rh = rotated.size
