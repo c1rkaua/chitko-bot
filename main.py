@@ -1,4 +1,4 @@
-from news_engine import get_top_news_for_brief, format_news_post, published_ids, save_published_ids
+from news_engine import get_top_news_for_brief, format_news_post, published_ids, save_published_ids,fetch_article_text_sync
 import asyncio
 import aiohttp
 from aiogram import Bot, Dispatcher, F
@@ -374,7 +374,7 @@ async def scheduled_news():
 async def main():
     print("Я заработал")
 
-    scheduler.add_job(scheduled_brief, CronTrigger(hour=7, minute=0))
+    scheduler.add_job(scheduled_brief, CronTrigger(hour=8, minute=0))
     scheduler.add_job(scheduled_news, 'interval', minutes=30)
     scheduler.add_job(scheduled_evening_digest, CronTrigger(hour=22, minute=0))
     scheduler.start()
