@@ -240,7 +240,25 @@ async def approve_one(callback: CallbackQuery):
 @dp.callback_query(F.data.startswith("skip_one_"))
 async def skip_one(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Пропущено") 
+    await callback.answer("Пропущено")
+
+@dp.message(Command("stats"))
+async def cmd_stats(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+    
+    published_count = len(published_ids)
+    pending_count = len(pending_news)
+    
+    text = (
+        f"<b>Статистика ЧІТКО</b>\n\n"
+        f"Опубліковано (в антидублі): <b>{published_count}</b>\n"
+        f"Зараз на апруві: <b>{pending_count}</b>\n\n"
+        f"Поріг авто: 75+\n"
+        f"Форс-мажор: 90+"
+    )
+    
+    await message.answer(text, parse_mode="HTML")
 
 # ======================
 # Запуск
