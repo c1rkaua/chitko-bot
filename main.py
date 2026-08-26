@@ -130,7 +130,7 @@ async def cmd_news(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
         return
     
-    await message.answer("Збираю новини...")
+    await message.answer("Собираю новости...")
     
     news_list = get_top_news_for_brief(10)
     auto_published = 0
@@ -166,15 +166,15 @@ async def cmd_news(message: Message):
         pending_news[news["event_id"]] = news
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Апрув", callback_data=f"approve_one_{news['event_id']}"),
-            InlineKeyboardButton(text="❌ Скіп", callback_data=f"skip_one_{news['event_id']}")
+            InlineKeyboardButton(text="✅ APPROVED", callback_data=f"approve_one_{news['event_id']}"),
+            InlineKeyboardButton(text="❌ DECLINE", callback_data=f"skip_one_{news['event_id']}")
         ]])
         
         score = news.get("final_score", 0)
         preview = f"<b>Score: {score}</b>\n\n{format_news_post(news)}"
         await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
     
-    await message.answer(f"Готово. Автоматично опубліковано: {auto_published}")
+    await message.answer(f"Готово. Сам добавил: {auto_published}")
 # ======================
 # Обробка кнопок
 # ======================
@@ -205,7 +205,7 @@ async def approve_brief(callback: CallbackQuery):
             await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
     
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Опубліковано в канал ✅")
+    await callback.answer("Добавил на канал ✅")
 
 @dp.callback_query(F.data.startswith("approve_one_"))
 async def approve_one(callback: CallbackQuery):
@@ -252,7 +252,7 @@ async def cmd_stats(message: Message):
     
     text = (
         f"<b>Статистика ЧІТКО</b>\n\n"
-        f"Опубліковано (в антидублі): <b>{published_count}</b>\n"
+        f"Опубліковано: <b>{published_count}</b>\n"
         f"Зараз на апруві: <b>{pending_count}</b>\n\n"
         f"Поріг авто: 75+\n"
         f"Форс-мажор: 90+"
