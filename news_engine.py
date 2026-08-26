@@ -443,6 +443,7 @@ def get_top_news_for_brief(count: int = 4) -> list:
     return news[:count]
 
 # ====================== ТЕСТ ======================
+
 def apply_watermark(image_path: str, output_path: str) -> str:
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -451,7 +452,7 @@ def apply_watermark(image_path: str, output_path: str) -> str:
         width, height = base.size
 
         text = "ЧІТКО"
-        font_size = max(28, width // 14)
+        font_size = max(36, width // 12)
 
         try:
             font = ImageFont.truetype(
@@ -467,45 +468,33 @@ def apply_watermark(image_path: str, output_path: str) -> str:
             except Exception:
                 font = ImageFont.load_default()
 
-        # Тільки текст на прозорому шарі
-        tmp = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(tmp)
+        text_img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(text_img)
 
         bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
 
-        # Малюємо по центру, потім повернемо
-        text_img = Image.new("RGBA", (tw + 20, th + 20), (0, 0, 0, 0))
-        text_draw = ImageDraw.Draw(text_img)
-        # Тільки білий напівпрозорий текст, без фону
-        text_draw.text((10, 10), text, font=font, fill=(255, 255, 255, 60))
+        only_text = Image.new("RGBA", (tw + 20, th + 20), (0, 0, 0, 0))
+        td = ImageDraw.Draw(only_text)
 
-        rotated = text_img.rotate(30, expand=True, resample=Image.BICUBIC)
+        # Тінь + текст (помітніше)
+        td.text((12, 12), text, font=font, fill=(0, 0, 0, 90))
+        td.text((10, 10), text, font=font, fill=(255, 255, 255, 120))
+
+        rotated = only_text.rotate(28, expand=True, resample=Image.BICUBIC)
         rw, rh = rotated.size
         x = (width - rw) // 2
         y = (height - rh) // 2
 
-        tmp.paste(rotated, (x, y), rotated)
-        result = Image.alpha_composite(base, tmp).convert("RGB")
+        text_img.paste(rotated, (x, y), rotated)
+        result = Image.alpha_composite(base, text_img).convert("RGB")
         result.save(output_path, "JPEG", quality=92)
         return output_path
     except Exception as e:
         print(f"Watermark error: {e}")
         return image_path
 
-def is_bad_source_image(url: str) -> bool:
-    if not url:
-        return True
-    u = url.lower()
-    bad = [
-        "suspilne.media",
-        "suspilne.novyny",
-        "corp.suspilne",
-        "suspilne.cdn",
-        "logo",
-    ]
-    return any(b in u for b in bad)
 
 def prepare_image_with_watermark(image_url: str):
     print(f"WM: start {str(image_url)[:100]}")
