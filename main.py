@@ -9,6 +9,8 @@ from news_engine import (
     prepare_image_with_watermark,
     is_bad_source_image,
     ensure_punctuation,
+    load_recent_titles,
+    save_recent_titles,
 )
 import asyncio
 import aiohttp
@@ -166,36 +168,46 @@ async def cmd_news(message: Message):
 
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
+
+        recent = load_recent_titles()
+        recent.append(news.get("title_original", ""))
+        save_recent_titles(recent)
+
         auto_published += 1
 
     auto_ids = {n["event_id"] for n in to_auto}
     for_approval = [
         n for n in news_list
         if n["event_id"] not in auto_ids and n.get("final_score", 0) >= 45
-    ][:5]
+    ][:6]
 
     for news in for_approval:
         pending_news[news["event_id"]] = news
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
-                text="✅ Апрув",
+                text="✅ APPROVED",
                 callback_data=f"approve_one_{news['event_id']}"
             ),
             InlineKeyboardButton(
-                text="❌ Скіп",
+                text="❌ DECLINE",
                 callback_data=f"skip_one_{news['event_id']}"
             )
         ]])
 
         score = news.get("final_score", 0)
         cat = news.get("category", get_news_category(news.get("title_original", "")))
-        preview = f"<b>Score: {score}</b> | {cat}\n\n{format_news_post(news)}"
+        conf = news.get("confidence_score", 0)
+        preview = (
+            f"<b>Score: {score}</b> | conf {conf} | {cat}\n\n"
+            f"{format_news_post(news)}"
+        )
         await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
 
     await message.answer(
         f"Готово.\nАвто: {auto_published}\nНа апрув: {len(for_approval)}"
     )
+   
 
 @dp.message(Command("digest"))
 async def cmd_digest(message: Message):
@@ -258,6 +270,11 @@ async def approve_one(callback: CallbackQuery):
 
     published_ids.add(news["event_id"])
     save_published_ids(published_ids)
+
+    recent = load_recent_titles()
+    recent.append(news.get("title_original", ""))
+    save_recent_titles(recent)
+
     pending_news.pop(event_id, None)
 
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -440,12 +457,16 @@ async def scheduled_news():
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
 
+        recent = load_recent_titles()
+        recent.append(news.get("title_original", ""))
+        save_recent_titles(recent)
+
     await bot.send_message(
         ADMIN_GROUP_ID,
-        f"Перевірив новини.\n"
-        f"Кандидатів: {len(news_list)}\n"
+        f"Проверил новости.\n"
+        f"Кандидаты: {len(news_list)}\n"
         f"Авто: {len(to_publish)}\n"
-        f"Час: {datetime.now().strftime('%H:%M')}"
+        f"Время: {datetime.now().strftime('%H:%M')}"
     )
             
 async def main():
