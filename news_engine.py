@@ -212,6 +212,96 @@ def fetch_article_text_sync(url: str) -> str:
 
 
 # ====================== ОСНОВНА ФУНКЦІЯ ======================
+def get_news_category(title: str) -> str:
+    t = title.lower()
+
+    if any(w in t for w in [
+        "тцк", "мобілізац", "повістк", "бусифікац", "рейд",
+        "схопил", "незаконн", "відстроч", "бронюван", "влк", "резерв+"
+    ]):
+        return "tck"
+
+    if any(w in t for w in [
+        "ракет", "дрон", "удар", "обстріл", "вибух", "шахед", "балістик",
+        "каб", "еваку", "фронт", "зсу", "ппо", "тривог", "бпла"
+    ]):
+        return "war"
+
+    if any(w in t for w in [
+        "енерго", "відключен", "блекаут", "світло", "електро",
+        "нбу", "курс", "долар", "євро", "цін", "бюджет", "інфляц",
+        "тариф", "подат", "пенсі", "виплат"
+    ]):
+        return "economy"
+
+    if any(w in t for w in [
+        "президент", "кабмін", "рада", "закон", "уряд", "зеленськ", "указ"
+    ]):
+        return "politics"
+
+    if any(w in t for w in [
+        "спорт", "матч", "чемпіонат", "гол", "тендіс", "футбол",
+        "us open", "олімп", "світолін", "кіно", "концерт", "шоу"
+    ]):
+        return "sport"
+
+    return "other"
+
+
+def ensure_punctuation(text: str) -> str:
+    text = text.strip()
+    if not text:
+        return text
+    if text[-1] not in ".!?…:":
+        text += "."
+    return text
+
+
+def select_for_publish(news_list: list) -> list:
+    """
+    Редакційний відбір:
+    - max 1 новина за цикл
+    - 2 тільки якщо обидві >= 90
+    - спорт/other майже не проходять в авто
+    """
+    if not news_list:
+        return []
+
+    # Фільтр мінімального порогу
+    candidates = []
+    for n in news_list:
+        score = n.get("final_score", 0)
+        cat = get_news_category(n.get("title_original", ""))
+        n["category"] = cat
+
+        if cat == "sport" and score < 88:
+            continue
+        if cat == "other" and score < 80:
+            continue
+        if score < 75:
+            continue
+
+        candidates.append(n)
+
+    if not candidates:
+        return []
+
+    candidates.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+
+    top = candidates[0]
+    selected = [top]
+
+    # Друга тільки якщо обидві дуже сильні і різні теми
+    if len(candidates) > 1:
+        second = candidates[1]
+        if (
+            top.get("final_score", 0) >= 90
+            and second.get("final_score", 0) >= 90
+            and top.get("category") != second.get("category")
+        ):
+            selected.append(second)
+
+    return selected
 
 def fetch_and_score_news(limit_per_source: int = 8) -> list:
     all_news = []
@@ -361,7 +451,7 @@ def format_news_post(news: dict) -> str:
     sentences = re.split(r'(?<=[.!?])\s+', text)
     sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
 
-    # Жорстко прибираємо сміттєві речення
+    # Прибираємо сміттєві речення
     junk_parts = [
         "суспільне веде онлайн",
         "онлайн щодо",
@@ -372,14 +462,12 @@ def format_news_post(news: dict) -> str:
         "1645 день",
         "день війни",
     ]
-
     clean_sentences = []
     for s in sentences:
         low = s.lower()
         if any(j in low for j in junk_parts):
             continue
         clean_sentences.append(s)
-
     sentences = clean_sentences
 
     # Емодзі
@@ -395,13 +483,17 @@ def format_news_post(news: dict) -> str:
     else:
         emoji = "▪️"
 
-    # 2–3 чисті речення
+    # Тіло з обов'язковими крапками
     if len(sentences) >= 3:
-        body = sentences[0] + "\n\n" + sentences[1] + "\n\n" + sentences[2]
+        body = (
+            ensure_punctuation(sentences[0]) + "\n\n" +
+            ensure_punctuation(sentences[1]) + "\n\n" +
+            ensure_punctuation(sentences[2])
+        )
     elif len(sentences) == 2:
-        body = sentences[0] + "\n\n" + sentences[1]
+        body = ensure_punctuation(sentences[0]) + "\n\n" + ensure_punctuation(sentences[1])
     elif len(sentences) == 1:
-        body = sentences[0]
+        body = ensure_punctuation(sentences[0])
     else:
         body = "Деталі уточнюються."
 

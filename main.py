@@ -1,4 +1,4 @@
-from news_engine import get_top_news_for_brief, format_news_post, published_ids, save_published_ids,fetch_article_text_sync
+from news_engine import get_top_news_for_brief, format_news_post, published_ids, save_published_ids,fetch_article_text_sync, get_news_category
 import asyncio
 import aiohttp
 from aiogram import Bot, Dispatcher, F
@@ -26,16 +26,26 @@ scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 # Отримання курсів НБУ
 # ======================
 async def get_nbu_rates():
-    url = "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            data = await resp.json()
-    
-    rates = {}
-    for item in data:
-        if item["cc"] in ["USD", "EUR", "PLN"]:
-            rates[item["cc"]] = round(item["rate"], 2)
-    return rates
+    try:
+        import aiohttp
+        url = "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json"
+        timeout = aiohttp.ClientTimeout(total=10)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return "—", "—"
+                data = await resp.json()
+
+        usd = next((x for x in data if x.get("cc") == "USD"), None)
+        eur = next((x for x in data if x.get("cc") == "EUR"), None)
+
+        usd_rate = f"{usd['rate']:.2f}".replace(".", ",") if usd else "—"
+        eur_rate = f"{eur['rate']:.2f}".replace(".", ",") if eur else "—"
+
+        return usd_rate, eur_rate
+    except Exception:
+        return "—", "—"
 
 # ======================
 # Отримання цін на паливо (тимчасово)
@@ -141,7 +151,6 @@ async def cmd_brief(message: Message):
     
     await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
-
 @dp.message(Command("news"))
 async def cmd_news(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
@@ -149,22 +158,18 @@ async def cmd_news(message: Message):
 
     await message.answer("Збираю новини...")
 
-    news_list = get_top_news_for_brief(10)
+    news_list = get_top_news_for_brief(12)
+    to_auto = select_for_publish(news_list)
     auto_published = 0
 
-    force = [n for n in news_list if n.get("final_score", 0) >= 90]
-    important = [n for n in news_list if 75 <= n.get("final_score", 0) < 90]
-    for_approval = [n for n in news_list if 50 <= n.get("final_score", 0) < 75]
-
-    to_auto = force[:2]
-    if important:
-        to_auto.append(important[0])
-
     for news in to_auto:
-        if news.get("final_score", 0) >= 80 and news.get("source_url"):
-            full_text = fetch_article_text_sync(news["source_url"])
-            if full_text and len(full_text) > 100:
-                news["text_chitko"] = full_text
+        if news.get("final_score", 0) >= 90 and news.get("source_url"):
+            try:
+                full_text = fetch_article_text_sync(news["source_url"])
+                if full_text and len(full_text) > 120:
+                    news["text_chitko"] = full_text
+            except Exception:
+                pass
 
         formatted = format_news_post(news)
         video_url = news.get("video_url")
@@ -202,7 +207,14 @@ async def cmd_news(message: Message):
         save_published_ids(published_ids)
         auto_published += 1
 
-    for news in (important[1:] + for_approval)[:6]:
+    # На апрув — те, що не пройшло в авто, але score >= 60
+    auto_ids = {n["event_id"] for n in to_auto}
+    for_approval = [
+        n for n in news_list
+        if n["event_id"] not in auto_ids and n.get("final_score", 0) >= 60
+    ][:5]
+
+    for news in for_approval:
         pending_news[news["event_id"]] = news
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
@@ -217,10 +229,14 @@ async def cmd_news(message: Message):
         ]])
 
         score = news.get("final_score", 0)
-        preview = f"<b>Score: {score}</b>\n\n{format_news_post(news)}"
+        cat = news.get("category", get_news_category(news.get("title_original", "")))
+        preview = f"<b>Score: {score}</b> | {cat}\n\n{format_news_post(news)}"
         await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
 
-    await message.answer(f"Готово. Автоматически опубликовано: {auto_published}")
+    await message.answer(
+        f"Готово.\nАвто: {auto_published}\nНа апрув: {len(for_approval)}"
+    )
+
 # ======================
 # Обробка кнопок
 # ======================
@@ -309,15 +325,14 @@ async def cmd_stats(message: Message):
 # ======================
 # Запуск
 # ======================
+
 async def scheduled_brief():
     text = await create_morning_brief()
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ APPROVED", callback_data="approve_brief"),
-            InlineKeyboardButton(text="❌ DECLINE", callback_data="skip_brief")
-        ]
-    ])
-    await bot.send_message(ADMIN_GROUP_ID, text, reply_markup=keyboard, parse_mode="HTML")
+    await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+    await bot.send_message(
+        ADMIN_GROUP_ID,
+        "Ранковий бріф опубліковано в канал."
+    )
 
 async def scheduled_evening_digest():
     news_list = get_top_news_for_brief(6)
@@ -344,21 +359,19 @@ async def scheduled_evening_digest():
     await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
 
 async def scheduled_news():
-    news_list = get_top_news_for_brief(10)
+    news_list = get_top_news_for_brief(12)
 
-    force_majeure = [n for n in news_list if n.get("final_score", 0) >= 90]
-    important = [n for n in news_list if 75 <= n.get("final_score", 0) < 90]
-
-    to_publish = []
-    to_publish.extend(force_majeure[:3])
-    if important:
-        to_publish.append(important[0])
+    # Редакційний відбір: max 1, рідко 2
+    to_publish = select_for_publish(news_list)
 
     for news in to_publish:
-        if news.get("final_score", 0) >= 80 and news.get("source_url"):
-            full_text = fetch_article_text_sync(news["source_url"])
-            if full_text and len(full_text) > 100:
-                news["text_chitko"] = full_text
+        if news.get("final_score", 0) >= 90 and news.get("source_url"):
+            try:
+                full_text = fetch_article_text_sync(news["source_url"])
+                if full_text and len(full_text) > 120:
+                    news["text_chitko"] = full_text
+            except Exception:
+                pass
 
         formatted = format_news_post(news)
         video_url = news.get("video_url")
@@ -397,17 +410,31 @@ async def scheduled_news():
 
     await bot.send_message(
         ADMIN_GROUP_ID,
-        f"Проверил новости.\nАвто: {len(to_publish)}\nЧас: {datetime.now().strftime('%H:%M')}"
+        f"Перевірив новини.\n"
+        f"Кандидатів: {len(news_list)}\n"
+        f"Авто: {len(to_publish)}\n"
+        f"Час: {datetime.now().strftime('%H:%M')}"
     )
             
 async def main():
     print("Я заработал")
 
-    scheduler.add_job(scheduled_brief, CronTrigger(hour=8, minute=0))
-    scheduler.add_job(scheduled_news, 'interval', minutes=30)
-    scheduler.add_job(scheduled_evening_digest, CronTrigger(hour=22, minute=0))
+    scheduler.add_job(
+        scheduled_brief,
+        CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv")
+    )
+    scheduler.add_job(
+        scheduled_news,
+        "interval",
+        minutes=30
+    )
+    scheduler.add_job(
+        scheduled_evening_digest,
+        CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv")
+    )
+
     scheduler.start()
-    print("Я уже работаю")
+    print("Планувальник запущено")
 
     await dp.start_polling(bot)
 
