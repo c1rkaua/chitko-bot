@@ -214,15 +214,12 @@ def fetch_article_text_sync(url: str) -> str:
 # ====================== ОСНОВНА ФУНКЦІЯ ======================
 
 def fetch_and_score_news(limit_per_source: int = 8) -> list:
-    """
-    Збирає новини з RSS, рахує score і повертає відсортований список.
-    """
     all_news = []
 
     for source_name, meta in RSS_SOURCES.items():
         try:
             feed = feedparser.parse(meta["url"])
-            
+
             for entry in feed.entries[:limit_per_source]:
                 title = clean_text(entry.get("title", ""))
                 if not title or len(title) < 15:
@@ -233,19 +230,30 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                 if hasattr(entry, "published"):
                     try:
                         published = date_parser.parse(entry.published)
-                    except:
+                    except Exception:
                         published = datetime.now(timezone.utc)
                 else:
                     published = datetime.now(timezone.utc)
 
-                summary = clean_text(entry.get("summary", entry.get("description", "")))[:300]
+                # Текст
+                summary = clean_text(
+                    entry.get("summary", "") or entry.get("description", "")
+                )
+
+                # Посилання
                 link = entry.get("link", "")
 
+                # Скоринг
                 importance = calculate_importance(title, meta["trust"])
-                confidence = calculate_confidence(meta["trust"], meta["class"])
-                freshness = calculate_freshness(published)
+                confidence = min(1.0, meta["trust"] / 10)
                 
-                final_score = importance * freshness * (confidence / 100)
+                age_hours = max(
+                    0.1,
+                    (datetime.now(timezone.utc) - published.astimezone(timezone.utc)).total_seconds() / 3600
+                )
+                freshness = max(0.5, 1.0 - (age_hours / 48))
+                
+                final_score = importance * confidence * freshness
                 news_class = classify_news(final_score)
 
                 if news_class == "LOW":
@@ -265,33 +273,44 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                     "freshness_score": round(freshness, 2),
                     "final_score": round(final_score, 1),
                     "class": news_class,
-                    "status": "pending"
+                    "status": "pending",
+                    "image_url": None,
+                    "video_url": None,
                 }
 
-                # Спробуємо витягнути фото
-                image_url = None
+                # Медіа
                 if "media_content" in entry:
                     for media in entry.media_content:
-                        if media.get("type", "").startswith("image"):
-                            image_url = media.get("url")
-                            break
-                if not image_url and "links" in entry:
-                    for link_item in entry.links:
-                        if link_item.get("type", "").startswith("image"):
-                            image_url = link_item.get("href")
-                            break
+                        media_type = media.get("type", "")
+                        media_url = media.get("url")
+                        if not media_url:
+                            continue
+                        if media_type.startswith("image") and not news_item["image_url"]:
+                            news_item["image_url"] = media_url
+                        elif media_type.startswith("video") and not news_item["video_url"]:
+                            news_item["video_url"] = media_url
 
-                news_item["image_url"] = image_url
+                if not news_item["image_url"] and hasattr(entry, "links"):
+                    for link_item in entry.links:
+                        ltype = link_item.get("type", "")
+                        href = link_item.get("href")
+                        if not href:
+                            continue
+                        if ltype.startswith("image") and not news_item["image_url"]:
+                            news_item["image_url"] = href
+                        elif ltype.startswith("video") and not news_item["video_url"]:
+                            news_item["video_url"] = href
+
                 all_news.append(news_item)
 
         except Exception as e:
             print(f"Помилка при читанні {source_name}: {e}")
             continue
 
-    # Сортуємо за final_score
+    # Сортування
     all_news.sort(key=lambda x: x["final_score"], reverse=True)
-    
-    # Дедуплікація за event_id
+
+    # Дедуп по event_id
     seen = set()
     unique_news = []
     for item in all_news:
@@ -299,7 +318,7 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
             seen.add(item["event_id"])
             unique_news.append(item)
 
-    # Антидубль по схожості заголовків
+    # Антидубль + схожі заголовки
     def is_similar(t1, t2):
         s1 = set(t1.lower().split())
         s2 = set(t2.lower().split())

@@ -147,7 +147,7 @@ async def cmd_news(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
         return
 
-    await message.answer("Собираю новости...")
+    await message.answer("Збираю новини...")
 
     news_list = get_top_news_for_brief(10)
     auto_published = 0
@@ -167,10 +167,18 @@ async def cmd_news(message: Message):
                 news["text_chitko"] = full_text
 
         formatted = format_news_post(news)
+        video_url = news.get("video_url")
         image_url = news.get("image_url")
 
         try:
-            if image_url:
+            if video_url:
+                await bot.send_video(
+                    CHANNEL_ID,
+                    video=video_url,
+                    caption=formatted,
+                    parse_mode="HTML"
+                )
+            elif image_url:
                 await bot.send_photo(
                     CHANNEL_ID,
                     photo=image_url,
@@ -199,7 +207,7 @@ async def cmd_news(message: Message):
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
-                text="✅ APPROVES",
+                text="✅ APPROVED",
                 callback_data=f"approve_one_{news['event_id']}"
             ),
             InlineKeyboardButton(
@@ -212,7 +220,7 @@ async def cmd_news(message: Message):
         preview = f"<b>Score: {score}</b>\n\n{format_news_post(news)}"
         await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
 
-    await message.answer(f"Готово. Автоматически добавил: {auto_published}")
+    await message.answer(f"Готово. Автоматически опубликовано: {auto_published}")
 # ======================
 # Обробка кнопок
 # ======================
@@ -337,35 +345,56 @@ async def scheduled_evening_digest():
 
 async def scheduled_news():
     news_list = get_top_news_for_brief(10)
-    
+
     force_majeure = [n for n in news_list if n.get("final_score", 0) >= 90]
     important = [n for n in news_list if 75 <= n.get("final_score", 0) < 90]
-    
+
     to_publish = []
     to_publish.extend(force_majeure[:3])
     if important:
         to_publish.append(important[0])
-    
+
     for news in to_publish:
-        # Для топ-новин підтягуємо повний текст
         if news.get("final_score", 0) >= 80 and news.get("source_url"):
             full_text = fetch_article_text_sync(news["source_url"])
             if full_text and len(full_text) > 100:
                 news["text_chitko"] = full_text
+
         formatted = format_news_post(news)
+        video_url = news.get("video_url")
         image_url = news.get("image_url")
-        
+
         try:
-            if image_url:
-                await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
+            if video_url:
+                await bot.send_video(
+                    CHANNEL_ID,
+                    video=video_url,
+                    caption=formatted,
+                    parse_mode="HTML"
+                )
+            elif image_url:
+                await bot.send_photo(
+                    CHANNEL_ID,
+                    photo=image_url,
+                    caption=formatted,
+                    parse_mode="HTML"
+                )
             else:
-                await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-        except:
-            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-        
+                await bot.send_message(
+                    CHANNEL_ID,
+                    formatted,
+                    parse_mode="HTML"
+                )
+        except Exception:
+            await bot.send_message(
+                CHANNEL_ID,
+                formatted,
+                parse_mode="HTML"
+            )
+
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
-    
+
     await bot.send_message(
         ADMIN_GROUP_ID,
         f"Проверил новости.\nАвто: {len(to_publish)}\nЧас: {datetime.now().strftime('%H:%M')}"
