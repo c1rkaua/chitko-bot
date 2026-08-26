@@ -495,6 +495,19 @@ def apply_watermark(image_path: str, output_path: str) -> str:
         print(f"Watermark error: {e}")
         return image_path
 
+def is_bad_source_image(url: str) -> bool:
+    if not url:
+        return True
+    u = url.lower()
+    bad = [
+        "suspilne.media",
+        "suspilne.novyny",
+        "corp.suspilne",
+        "suspilne.cdn",
+        "cdn4.suspilne",
+    ]
+    return any(b in u for b in bad)
+
 
 def prepare_image_with_watermark(image_url: str):
     print(f"WM: start {str(image_url)[:100]}")
