@@ -467,11 +467,8 @@ def apply_watermark(image_path: str, output_path: str) -> str:
         base = Image.open(image_path).convert("RGBA")
         width, height = base.size
 
-        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
-
         text = "ЧІТКО"
-        font_size = max(32, width // 18)
+        font_size = max(28, width // 14)
 
         try:
             font = ImageFont.truetype(
@@ -487,23 +484,27 @@ def apply_watermark(image_path: str, output_path: str) -> str:
             except Exception:
                 font = ImageFont.load_default()
 
+        # Тільки текст на прозорому шарі
+        tmp = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(tmp)
+
         bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
 
-        x = width - tw - 24
-        y = height - th - 24
+        # Малюємо по центру, потім повернемо
+        text_img = Image.new("RGBA", (tw + 20, th + 20), (0, 0, 0, 0))
+        text_draw = ImageDraw.Draw(text_img)
+        # Тільки білий напівпрозорий текст, без фону
+        text_draw.text((10, 10), text, font=font, fill=(255, 255, 255, 60))
 
-        # Підложка для читабельності
-        pad = 10
-        draw.rectangle(
-            [x - pad, y - pad, x + tw + pad, y + th + pad],
-            fill=(0, 0, 0, 110)
-        )
+        rotated = text_img.rotate(30, expand=True, resample=Image.BICUBIC)
+        rw, rh = rotated.size
+        x = (width - rw) // 2
+        y = (height - rh) // 2
 
-        draw.text((x, y), text, font=font, fill=(255, 255, 255, 230))
-
-        result = Image.alpha_composite(base, overlay).convert("RGB")
+        tmp.paste(rotated, (x, y), rotated)
+        result = Image.alpha_composite(base, tmp).convert("RGB")
         result.save(output_path, "JPEG", quality=92)
         return output_path
     except Exception as e:
