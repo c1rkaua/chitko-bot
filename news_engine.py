@@ -258,33 +258,46 @@ def ensure_punctuation(text: str) -> str:
 
 
 def select_for_publish(news_list: list) -> list:
-    """
-    Редакційний відбір:
-    - max 1 новина за цикл
-    - 2 тільки якщо обидві >= 90
-    - спорт/other майже не проходять в авто
-    """
     if not news_list:
         return []
 
-    # Фільтр мінімального порогу
     candidates = []
     for n in news_list:
         score = n.get("final_score", 0)
-        cat = get_news_category(n.get("title_original", ""))
+        title = n.get("title_original", "")
+        cat = get_news_category(title)
         n["category"] = cat
 
-        if cat == "sport" and score < 88:
+        # Спорт — ніколи в авто
+        if cat == "sport":
             continue
-        if cat == "other" and score < 80:
+        # Інше — тільки дуже сильне
+        if cat == "other" and score < 85:
             continue
-        if score < 75:
+        # Загальний мінімум
+        if score < 78:
             continue
 
         candidates.append(n)
 
     if not candidates:
         return []
+
+    candidates.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+
+    selected = [candidates[0]]
+
+    # Друга новина — тільки якщо обидві дуже сильні і різні категорії
+    if len(candidates) > 1:
+        second = candidates[1]
+        if (
+            candidates[0].get("final_score", 0) >= 90
+            and second.get("final_score", 0) >= 90
+            and candidates[0].get("category") != second.get("category")
+        ):
+            selected.append(second)
+
+    return selected
 
     candidates.sort(key=lambda x: x.get("final_score", 0), reverse=True)
 
