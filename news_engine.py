@@ -357,24 +357,30 @@ def format_news_post(news: dict) -> str:
     while "  " in text:
         text = text.replace("  ", " ")
 
-    # Відсікаємо сміття з live-стрічок
-    junk = [
+    import re
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
+
+    # Жорстко прибираємо сміттєві речення
+    junk_parts = [
         "суспільне веде онлайн",
         "онлайн щодо",
         "читайте також",
         "підписуйтесь",
         "більше новин",
         "слідкуйте за оновленнями",
+        "1645 день",
+        "день війни",
     ]
-    low = text.lower()
-    for j in junk:
-        if j in low:
-            text = news.get("summary", text)
-            break
 
-    import re
-    sentences = re.split(r'(?<=[.!?])\s+', text)
-    sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
+    clean_sentences = []
+    for s in sentences:
+        low = s.lower()
+        if any(j in low for j in junk_parts):
+            continue
+        clean_sentences.append(s)
+
+    sentences = clean_sentences
 
     # Емодзі
     title_lower = title.lower()
@@ -401,7 +407,7 @@ def format_news_post(news: dict) -> str:
 
     post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
 
-    # Ліміт підпису Telegram (фото/відео) ~1024
+    # Ліміт підпису Telegram
     if len(post) > 1000:
         cut = post[:960]
         last_dot = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
