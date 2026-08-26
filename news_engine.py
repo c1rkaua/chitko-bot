@@ -307,7 +307,7 @@ def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()
     
-    # Чистимо текст
+    # Чистимо
     text = text.replace("\n", " ").strip()
     while "  " in text:
         text = text.replace("  ", " ")
@@ -316,7 +316,7 @@ def format_news_post(news: dict) -> str:
     sentences = re.split(r'(?<=[.!?])\s+', text)
     sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
     
-    # Емодзі за темою
+    # Емодзі
     title_lower = title.lower()
     if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
         emoji = "⚡️"
@@ -335,11 +335,12 @@ def format_news_post(news: dict) -> str:
     elif len(sentences) == 2:
         body = sentences[0] + "\n\n" + sentences[1]
     elif len(sentences) == 1:
-        # Якщо тільки одне речення — перевіряємо, чи воно не копія заголовка
-        if sentences[0].lower()[:40] in title.lower() or title.lower()[:40] in sentences[0].lower():
-            body = sentences[0]
+        # Одне речення — перевіряємо, чи не копія заголовка
+        s = sentences[0]
+        if s.lower()[:50] in title.lower() or title.lower()[:50] in s.lower():
+            body = s + "\n\nДеталі уточнюються."
         else:
-            body = sentences[0]
+            body = s
     else:
         body = "Деталі уточнюються."
     
