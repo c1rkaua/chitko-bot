@@ -197,6 +197,13 @@ async def cmd_news(message: Message):
         f"Готово.\nАвто: {auto_published}\nНа апрув: {len(for_approval)}"
     )
 
+@dp.message(Command("digest"))
+async def cmd_digest(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+    await message.answer("Збираю вечірній дайджест...")
+    await scheduled_evening_digest()
+
 # ======================
 # Обробка кнопок
 # ======================
