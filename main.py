@@ -49,13 +49,35 @@ async def get_fuel_prices():
 # ======================
 # Формування бріфу
 # ======================
+async def get_nbu_rates():
+    try:
+        import aiohttp
+        url = "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json"
+        timeout = aiohttp.ClientTimeout(total=10)
+        
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return "—", "—"
+                data = await resp.json()
+        
+        usd = next((x for x in data if x.get("cc") == "USD"), None)
+        eur = next((x for x in data if x.get("cc") == "EUR"), None)
+        
+        usd_rate = f"{usd['rate']:.2f}".replace(".", ",") if usd else "—"
+        eur_rate = f"{eur['rate']:.2f}".replace(".", ",") if eur else "—"
+        
+        return usd_rate, eur_rate
+    except Exception:
+        return "—", "—"
+
 async def create_morning_brief():
     from datetime import datetime
     import pytz
     
     # Курси і паливо (поки заглушки)
-    usd = "41,25"
-    eur = "44,80"
+    usd = await get_nbu_rates()
+    eur = await get_nbu_rates()
     a95 = "58,40"
     dp = "56,10"
     gas = "34,20"
