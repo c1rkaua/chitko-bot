@@ -451,6 +451,75 @@ def get_top_news_for_brief(count: int = 4) -> list:
     return news[:count]
 
 # ====================== ТЕСТ ======================
+def apply_watermark(image_path: str, output_path: str) -> str:
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+
+        base = Image.open(image_path).convert("RGBA")
+        width, height = base.size
+
+        overlay = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        text = "ЧІТКО"
+        try:
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                size=max(24, width // 25)
+            )
+        except Exception:
+            font = ImageFont.load_default()
+
+        bbox = draw.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+
+        x = width - tw - 20
+        y = height - th - 20
+
+        draw.text((x + 2, y + 2), text, font=font, fill=(0, 0, 0, 120))
+        draw.text((x, y), text, font=font, fill=(255, 255, 255, 160))
+
+        result = Image.alpha_composite(base, overlay).convert("RGB")
+        result.save(output_path, "JPEG", quality=90)
+        return output_path
+    except Exception as e:
+        print(f"Watermark error: {e}")
+        return image_path
+
+def prepare_image_with_watermark(image_url: str) -> str | None:
+    """
+    Скачує фото, ставить watermark ЧІТКО, повертає шлях до файлу.
+    Якщо не вийшло — None.
+    """
+    try:
+        import requests
+        import tempfile
+        import os
+
+        resp = requests.get(image_url, timeout=10)
+        if resp.status_code != 200:
+            return None
+
+        tmp_in = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        tmp_in.write(resp.content)
+        tmp_in.close()
+
+        tmp_out = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        tmp_out.close()
+
+        result = apply_watermark(tmp_in.name, tmp_out.name)
+
+        try:
+            os.unlink(tmp_in.name)
+        except Exception:
+            pass
+
+        return result
+    except Exception as e:
+        print(f"prepare_image error: {e}")
+        return None
+
 def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()

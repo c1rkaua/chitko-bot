@@ -6,6 +6,7 @@ from news_engine import (
     fetch_article_text_sync,
     select_for_publish,
     get_news_category,
+    prepare_image_with_watermark,
 )
 import asyncio
 import aiohttp
@@ -180,42 +181,12 @@ async def cmd_news(message: Message):
                 pass
 
         formatted = format_news_post(news)
-        video_url = news.get("video_url")
-        image_url = news.get("image_url")
-
-        try:
-            if video_url:
-                await bot.send_video(
-                    CHANNEL_ID,
-                    video=video_url,
-                    caption=formatted,
-                    parse_mode="HTML"
-                )
-            elif image_url:
-                await bot.send_photo(
-                    CHANNEL_ID,
-                    photo=image_url,
-                    caption=formatted,
-                    parse_mode="HTML"
-                )
-            else:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    formatted,
-                    parse_mode="HTML"
-                )
-        except Exception:
-            await bot.send_message(
-                CHANNEL_ID,
-                formatted,
-                parse_mode="HTML"
-            )
+        await send_news_to_channel(news, formatted)
 
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
         auto_published += 1
 
-    # На апрув — те, що не пройшло в авто, але score >= 60
     auto_ids = {n["event_id"] for n in to_auto}
     for_approval = [
         n for n in news_list
@@ -227,11 +198,11 @@ async def cmd_news(message: Message):
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(
-                text="✅ APPROVED",
+                text="✅ Апрув",
                 callback_data=f"approve_one_{news['event_id']}"
             ),
             InlineKeyboardButton(
-                text="❌ DECLINE",
+                text="❌ Скіп",
                 callback_data=f"skip_one_{news['event_id']}"
             )
         ]])
@@ -366,10 +337,60 @@ async def scheduled_evening_digest():
     
     await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
 
+async def send_news_to_channel(news: dict, formatted: str):
+    video_url = news.get("video_url")
+    image_url = news.get("image_url")
+
+    try:
+        if video_url:
+            await bot.send_video(
+                CHANNEL_ID,
+                video=video_url,
+                caption=formatted,
+                parse_mode="HTML"
+            )
+            return
+
+        if image_url:
+            local_path = prepare_image_with_watermark(image_url)
+            if local_path:
+                from aiogram.types import FSInputFile
+                photo = FSInputFile(local_path)
+                await bot.send_photo(
+                    CHANNEL_ID,
+                    photo=photo,
+                    caption=formatted,
+                    parse_mode="HTML"
+                )
+                try:
+                    import os
+                    os.unlink(local_path)
+                except Exception:
+                    pass
+                return
+
+            await bot.send_photo(
+                CHANNEL_ID,
+                photo=image_url,
+                caption=formatted,
+                parse_mode="HTML"
+            )
+            return
+
+        await bot.send_message(
+            CHANNEL_ID,
+            formatted,
+            parse_mode="HTML"
+        )
+    except Exception:
+        await bot.send_message(
+            CHANNEL_ID,
+            formatted,
+            parse_mode="HTML"
+        )
+
 async def scheduled_news():
     news_list = get_top_news_for_brief(12)
-
-    # Редакційний відбір: max 1, рідко 2
     to_publish = select_for_publish(news_list)
 
     for news in to_publish:
@@ -382,36 +403,7 @@ async def scheduled_news():
                 pass
 
         formatted = format_news_post(news)
-        video_url = news.get("video_url")
-        image_url = news.get("image_url")
-
-        try:
-            if video_url:
-                await bot.send_video(
-                    CHANNEL_ID,
-                    video=video_url,
-                    caption=formatted,
-                    parse_mode="HTML"
-                )
-            elif image_url:
-                await bot.send_photo(
-                    CHANNEL_ID,
-                    photo=image_url,
-                    caption=formatted,
-                    parse_mode="HTML"
-                )
-            else:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    formatted,
-                    parse_mode="HTML"
-                )
-        except Exception:
-            await bot.send_message(
-                CHANNEL_ID,
-                formatted,
-                parse_mode="HTML"
-            )
+        await send_news_to_channel(news, formatted)
 
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
