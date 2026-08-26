@@ -398,8 +398,8 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                         media_url = media.get("url")
                         if not media_url:
                             continue
-                        if media_type.startswith("image") and not news_item["image_url"]:
-                            news_item["image_url"] = media_url
+                        if media_type.startswith("image") and is_bad_image(news_item["image_url"]):
+                            news_item["image_url"] = None
                         elif media_type.startswith("video") and not news_item["video_url"]:
                             news_item["video_url"] = media_url
 
@@ -510,6 +510,19 @@ def apply_watermark(image_path: str, output_path: str) -> str:
     except Exception as e:
         print(f"Watermark error: {e}")
         return image_path
+
+def is_bad_source_image(url: str) -> bool:
+    if not url:
+        return True
+    u = url.lower()
+    bad = [
+        "suspilne.media",
+        "suspilne.novyny",
+        "corp.suspilne",
+        "suspilne.cdn",
+        "logo",
+    ]
+    return any(b in u for b in bad)
 
 def prepare_image_with_watermark(image_url: str):
     print(f"WM: start {str(image_url)[:100]}")

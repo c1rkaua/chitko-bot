@@ -7,6 +7,7 @@ from news_engine import (
     select_for_publish,
     get_news_category,
     prepare_image_with_watermark,
+    is_bad_source_image,
 )
 import asyncio
 import aiohttp
@@ -336,8 +337,19 @@ async def scheduled_evening_digest():
     await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
 
 async def send_news_to_channel(news: dict, formatted: str):
+    import os
+    from aiogram.types import FSInputFile
+
     video_url = news.get("video_url")
     image_url = news.get("image_url")
+    score = news.get("final_score", 0)
+
+    # Не беремо брендовані фото Суспільне тощо
+    if image_url and is_bad_source_image(image_url):
+        image_url = None
+
+    terminova_path = os.path.join(os.path.dirname(__file__), "assets", "terminova.jpg")
+    has_terminova = os.path.isfile(terminova_path)
 
     try:
         if video_url:
@@ -349,10 +361,20 @@ async def send_news_to_channel(news: dict, formatted: str):
             )
             return
 
+        # Breaking без нормального фото → картка ТЕРМІНОВА
+        if score >= 90 and not image_url and has_terminova:
+            photo = FSInputFile(terminova_path)
+            await bot.send_photo(
+                CHANNEL_ID,
+                photo=photo,
+                caption=formatted,
+                parse_mode="HTML"
+            )
+            return
+
         if image_url:
             local_path = prepare_image_with_watermark(image_url)
             if local_path:
-                from aiogram.types import FSInputFile
                 photo = FSInputFile(local_path)
                 await bot.send_photo(
                     CHANNEL_ID,
@@ -361,16 +383,15 @@ async def send_news_to_channel(news: dict, formatted: str):
                     parse_mode="HTML"
                 )
                 try:
-                    import os
                     os.unlink(local_path)
                 except Exception:
                     pass
                 return
 
-            await bot.send_photo(
+            # Якщо download 403 — без фото
+            await bot.send_message(
                 CHANNEL_ID,
-                photo=image_url,
-                caption=formatted,
+                formatted,
                 parse_mode="HTML"
             )
             return
