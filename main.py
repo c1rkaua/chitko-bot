@@ -163,6 +163,10 @@ async def cmd_news(message: Message):
         to_auto.append(important[0])
     
     for news in to_auto:
+            if news.get("final_score", 0) >= 80 and news.get("source_url"):
+                full_text = fetch_article_text_sync(news["source_url"])
+                if full_text and len(full_text) > 100:
+                    news["text_chitko"] = full_text
         formatted = format_news_post(news)
         image_url = news.get("image_url")
         
@@ -326,6 +330,11 @@ async def scheduled_news():
         to_publish.append(important[0])
     
     for news in to_publish:
+        # Для топ-новин підтягуємо повний текст
+        if news.get("final_score", 0) >= 80 and news.get("source_url"):
+            full_text = fetch_article_text_sync(news["source_url"])
+            if full_text and len(full_text) > 100:
+                news["text_chitko"] = full_text
         formatted = format_news_post(news)
         image_url = news.get("image_url")
         

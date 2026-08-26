@@ -184,6 +184,32 @@ def classify_news(final_score: float) -> str:
     else:
         return "LOW"
 
+def fetch_article_text_sync(url: str) -> str:
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=8)
+        if resp.status_code != 200:
+            return ""
+        
+        soup = BeautifulSoup(resp.text, "lxml")
+        for tag in soup(["script", "style", "noscript"]):
+            tag.decompose()
+        
+        paragraphs = []
+        for p in soup.find_all("p"):
+            t = p.get_text(" ", strip=True)
+            if len(t) > 60:
+                paragraphs.append(t)
+            if len(paragraphs) >= 4:
+                break
+        
+        return " ".join(paragraphs[:4])
+    except Exception:
+        return ""
+
 
 # ====================== ОСНОВНА ФУНКЦІЯ ======================
 
