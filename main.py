@@ -258,20 +258,15 @@ async def scheduled_brief():
 async def scheduled_news():
     news_list = get_top_news_for_brief(10)
     
-    # Розділяємо за важливістю
     force_majeure = [n for n in news_list if n.get("final_score", 0) >= 90]
     important = [n for n in news_list if 75 <= n.get("final_score", 0) < 90]
     
     to_publish = []
-    
-    # Форс-мажор — беремо до 3
     to_publish.extend(force_majeure[:3])
-    
-    # Важливі — тільки 1 найкращу
     if important:
         to_publish.append(important[0])
     
-for news in to_publish:
+    for news in to_publish:
         formatted = format_news_post(news)
         image_url = news.get("image_url")
         
@@ -286,7 +281,6 @@ for news in to_publish:
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
     
-    # Лог — тільки один раз після всіх публікацій
     await bot.send_message(
         ADMIN_GROUP_ID,
         f"Перевірив новини.\nАвто: {len(to_publish)}\nЧас: {datetime.now().strftime('%H:%M')}"
