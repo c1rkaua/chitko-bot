@@ -273,6 +273,30 @@ async def scheduled_brief():
     ])
     await bot.send_message(ADMIN_GROUP_ID, text, reply_markup=keyboard, parse_mode="HTML")
 
+async def scheduled_evening_digest():
+    news_list = get_top_news_for_brief(6)
+    
+    if not news_list:
+        return
+    
+    from datetime import datetime
+    import pytz
+    
+    now = datetime.now(pytz.timezone("Europe/Kyiv"))
+    date_str = now.strftime("%d.%m")
+    
+    lines = [f"<b>ЧІТКО • Підсумки дня</b>\n{date_str}\n"]
+    
+    for i, news in enumerate(news_list[:5], 1):
+        title = news.get("title_chitko", news.get("title_original", "")).strip()
+        lines.append(f"{i}. {title}")
+    
+    lines.append("\nГарного вечора.\n<b>ЧІТКО</b>")
+    
+    text = "\n".join(lines)
+    
+    await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+
 async def scheduled_news():
     news_list = get_top_news_for_brief(10)
     
@@ -309,6 +333,7 @@ async def main():
 
     scheduler.add_job(scheduled_brief, CronTrigger(hour=7, minute=0))
     scheduler.add_job(scheduled_news, 'interval', minutes=30)
+    scheduler.add_job(scheduled_evening_digest, CronTrigger(hour=22, minute=0))
     scheduler.start()
     print("Я уже работаю")
 
