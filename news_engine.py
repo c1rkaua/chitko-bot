@@ -351,15 +351,32 @@ def get_top_news_for_brief(count: int = 4) -> list:
 def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()
-    
+
+    # Базове очищення
     text = text.replace("\n", " ").strip()
     while "  " in text:
         text = text.replace("  ", " ")
-    
+
+    # Відсікаємо сміття з live-стрічок
+    junk = [
+        "суспільне веде онлайн",
+        "онлайн щодо",
+        "читайте також",
+        "підписуйтесь",
+        "більше новин",
+        "слідкуйте за оновленнями",
+    ]
+    low = text.lower()
+    for j in junk:
+        if j in low:
+            text = news.get("summary", text)
+            break
+
     import re
     sentences = re.split(r'(?<=[.!?])\s+', text)
-    sentences = [s.strip() for s in sentences if len(s.strip()) > 25]
-    
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
+
+    # Емодзі
     title_lower = title.lower()
     if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
         emoji = "⚡️"
@@ -371,27 +388,28 @@ def format_news_post(news: dict) -> str:
         emoji = "🔌"
     else:
         emoji = "▪️"
-    
-    # Беремо більше тексту
-    if len(sentences) >= 2:
-        body = " ".join(sentences[:6])
+
+    # 2–3 чисті речення
+    if len(sentences) >= 3:
+        body = sentences[0] + "\n\n" + sentences[1] + "\n\n" + sentences[2]
+    elif len(sentences) == 2:
+        body = sentences[0] + "\n\n" + sentences[1]
     elif len(sentences) == 1:
         body = sentences[0]
     else:
         body = "Деталі уточнюються."
-    
+
     post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
-    
-    # Ліміт підпису до фото в Telegram — 1024
+
+    # Ліміт підпису Telegram (фото/відео) ~1024
     if len(post) > 1000:
-        # Обрізаємо по останній крапці
-        cut = post[:980]
+        cut = post[:960]
         last_dot = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
         if last_dot > 200:
             post = cut[:last_dot + 1] + "\n\n<b>ЧІТКО</b>"
         else:
             post = cut.rsplit(" ", 1)[0] + "…\n\n<b>ЧІТКО</b>"
-    
+
     return post
 
 if __name__ == "__main__":
