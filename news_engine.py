@@ -307,39 +307,40 @@ def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()
     
-    # Чистимо
+    # Чистимо текст
     text = text.replace("\n", " ").strip()
     while "  " in text:
         text = text.replace("  ", " ")
     
     import re
     sentences = re.split(r'(?<=[.!?])\s+', text)
-    sentences = [s.strip() for s in sentences if len(s.strip()) > 25]
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
     
-    # Емодзі
+    # Емодзі за темою
     title_lower = title.lower()
-    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик"]):
+    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
         emoji = "⚡️"
-    elif any(w in title_lower for w in ["тцк", "мобілізац", "повістк", "бусифікац"]):
+    elif any(w in title_lower for w in ["тцк", "мобілізац", "повістк", "бусифікац", "рейд"]):
         emoji = "⚠️"
-    elif any(w in title_lower for w in ["загибл", "поранен", "загинув"]):
+    elif any(w in title_lower for w in ["загибл", "поранен", "загинув", "загинула"]):
         emoji = "🕯"
     elif any(w in title_lower for w in ["енерго", "відключен", "світло", "блекаут"]):
         emoji = "🔌"
     else:
         emoji = "▪️"
     
-    # Формуємо текст
-    if len(sentences) >= 4:
+    # Формуємо тіло
+    if len(sentences) >= 3:
         body = " ".join(sentences[:2]) + "\n\n" + " ".join(sentences[2:4])
-    elif len(sentences) >= 2:
-        body = " ".join(sentences[:2])
-        if len(sentences) > 2:
-            body += "\n\n" + " ".join(sentences[2:3])
+    elif len(sentences) == 2:
+        body = sentences[0] + "\n\n" + sentences[1]
     elif len(sentences) == 1:
-        body = sentences[0]
+        # Якщо тільки одне речення — перевіряємо, чи воно не копія заголовка
+        if sentences[0].lower()[:40] in title.lower() or title.lower()[:40] in sentences[0].lower():
+            body = sentences[0]
+        else:
+            body = sentences[0]
     else:
-        # Якщо тексту майже немає — не повторюємо заголовок
         body = "Деталі уточнюються."
     
     post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
