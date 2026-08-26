@@ -102,63 +102,58 @@ def calculate_freshness(published_at: datetime) -> float:
         return 0.30
 
 
-def calculate_importance(title: str, source_trust: float) -> int:
-    title_lower = title.lower()
-    score = 48  # базовий бал
+def calculate_importance(title: str, source_trust: float = 8.0) -> float:
+    t = title.lower()
+    score = 35.0  # база
 
-    # 1. Форс-мажор
-    force = ["ракет", "балістик", "дрон", "удар", "обстріл", "вибух", "шахед", "масован", "искандер", "циркон"]
-    for w in force:
-        if w in title_lower:
-            score += 28
-            break
+    # --- P1: війна / безпека ---
+    if any(w in t for w in ["масован", "ракетн", "балістик", "шахед", "комбінован"]):
+        score += 45
+    elif any(w in t for w in ["ракет", "дрон", "бпла", "удар", "обстріл", "вибух", "ппо", "тривог"]):
+        score += 35
+    elif any(w in t for w in ["еваку", "постражда", "загибл", "поранен"]):
+        score += 28
 
-    # 2. ТЦК / мобілізація
-    tck = ["тцк", "мобілізац", "повістк", "бусифікац", "рейд", "схопил", "незаконн"]
-    for w in tck:
-        if w in title_lower:
-            score += 22
-            break
+    # --- P1: ТЦК / мобілізація ---
+    if any(w in t for w in ["тцк", "мобілізац", "повістк", "бусифікац", "відстроч", "бронюван", "влк", "резерв+"]):
+        score += 40
 
-    # 3. Жертви
-    victims = ["загибл", "поранен", "загинув", "загинула", "вбито", "еваку", "ДТП"]
-    for w in victims:
-        if w in title_lower:
-            score += 20
-            break
+    # --- P1: економіка / енергетика ---
+    if any(w in t for w in ["блекаут", "відключен світл", "аварійн відключ"]):
+        score += 38
+    elif any(w in t for w in ["нбу", "обліков ставка", "курс дол", "курс євро", "тариф", "подат", "бюджет"]):
+        score += 30
+    elif any(w in t for w in ["енерго", "відключен", "світло", "електро"]):
+        score += 22
 
-    # 4. Енергетика
-    energy = ["енерго", "відключен", "блекаут", "світло", "електро"]
-    for w in energy:
-        if w in title_lower:
-            score += 18
-            break
+    # --- P2: влада / рішення ---
+    if any(w in t for w in ["кабмін", "верховн рад", "закон набув", "указ президент", "підписав закон"]):
+        score += 20
+    elif any(w in t for w in ["президент", "зеленськ", "шмигаль", "рада ухвали"]):
+        score += 12
 
-    # 5. Фронт / ЗСУ
-    war = ["фронт", "зсу", "генштаб", "повітряні сили", "ппо", "наступ", "бої"]
-    for w in war:
-        if w in title_lower:
-            score += 16
-            break
+    # --- Штрафи: локальне / неважливе ---
+    if any(w in t for w in ["собак", "кіт", "улюблен", "ветклін", "йоркшир"]):
+        score -= 45
+    if any(w in t for w in ["серіал", "актор", "співак", "концерт", "тікток"]):
+        score -= 40
+    if any(w in t for w in ["спорт", "футбол", "матч", "гол", "чемпіонат", "шахтар", "динамо", "тендіс", "us open"]):
+        score -= 50
 
-    # 6. Влада
-    power = ["президент", "зеленськ", "кабмін", "рада", "закон", "указ"]
-    for w in power:
-        if w in title_lower:
-            score += 15
-            break
+    # Локальні ДТП / дрібні ЧП без масових жертв
+    if any(w in t for w in ["дтп", "аварія", "п’ян", "п'ян", "водій"]) and not any(
+        w in t for w in ["масов", "автобус", "потяг", "багато загиб"]
+    ):
+        score -= 25
 
-    # 7. Економіка
-    economy = ["нбу", "курс", "долар", "євро", "цін", "бюджет"]
-    for w in economy:
-        if w in title_lower:
-            score += 12
-            break
+    # Дуже локальне
+    if any(w in t for w in ["громад", "селі ", "у селі", "районн"]):
+        score -= 12
 
-    # Бонус від джерела
-    score += int(source_trust * 6)
+    # Бонус за довіру джерела
+    score += min(8.0, source_trust)
 
-    return max(0, min(100, score))
+    return max(5.0, min(99.0, score))
 
 
 def calculate_confidence(source_trust: float, source_class: str) -> int:
@@ -338,26 +333,39 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                 else:
                     published = datetime.now(timezone.utc)
 
-                # Текст
+                if published.tzinfo is None:
+                    published = published.replace(tzinfo=timezone.utc)
+
                 summary = clean_text(
                     entry.get("summary", "") or entry.get("description", "")
                 )
-
-                # Посилання
                 link = entry.get("link", "")
 
-                # Скоринг
-                importance = calculate_importance(title, meta["trust"])
-                confidence = min(1.0, meta["trust"] / 10)
-                
+                trust = float(meta.get("trust", 8))
+                importance = calculate_importance(title, trust)
+                confidence = min(1.0, trust / 10.0)
+
                 age_hours = max(
                     0.1,
-                    (datetime.now(timezone.utc) - published.astimezone(timezone.utc)).total_seconds() / 3600
+                    (datetime.now(timezone.utc) - published).total_seconds() / 3600
                 )
-                freshness = max(0.5, 1.0 - (age_hours / 48))
-                
-                final_score = importance * confidence * freshness
-                news_class = classify_news(final_score)
+                # Свіжість: 1.0 → 0.55 за 48 годин
+                freshness = max(0.55, 1.0 - (age_hours / 48.0) * 0.45)
+
+                # Фінальний бал 0–100
+                final_score = importance * (0.75 + 0.25 * confidence) * freshness
+                final_score = round(max(0.0, min(100.0, final_score)), 1)
+
+                if final_score < 45:
+                    news_class = "LOW"
+                elif final_score < 60:
+                    news_class = "DIGEST"
+                elif final_score < 75:
+                    news_class = "NORMAL"
+                elif final_score < 90:
+                    news_class = "HIGH"
+                else:
+                    news_class = "BREAKING"
 
                 if news_class == "LOW":
                     continue
@@ -367,21 +375,23 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                     "title_original": title,
                     "title_chitko": title,
                     "text_chitko": summary,
+                    "summary": summary,
                     "source": source_name,
                     "source_url": link,
-                    "source_trust": meta["trust"],
+                    "source_trust": trust,
                     "published_at": published.isoformat(),
-                    "importance_score": importance,
-                    "confidence_score": confidence,
+                    "importance_score": round(importance, 1),
+                    "confidence_score": round(confidence, 2),
                     "freshness_score": round(freshness, 2),
-                    "final_score": round(final_score, 1),
+                    "final_score": final_score,
                     "class": news_class,
+                    "category": get_news_category(title),
                     "status": "pending",
                     "image_url": None,
                     "video_url": None,
                 }
 
-                # Медіа
+                # Медіа з RSS
                 if "media_content" in entry:
                     for media in entry.media_content:
                         media_type = media.get("type", "")
@@ -405,6 +415,45 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                             news_item["video_url"] = href
 
                 all_news.append(news_item)
+
+        except Exception as e:
+            print(f"Помилка при читанні {source_name}: {e}")
+            continue
+
+    all_news.sort(key=lambda x: x["final_score"], reverse=True)
+
+    # Дедуп по event_id
+    seen = set()
+    unique_news = []
+    for item in all_news:
+        if item["event_id"] not in seen:
+            seen.add(item["event_id"])
+            unique_news.append(item)
+
+    # Антидубль + схожі заголовки
+    def is_similar(t1, t2):
+        s1 = set(t1.lower().split())
+        s2 = set(t2.lower().split())
+        if not s1 or not s2:
+            return False
+        return len(s1 & s2) / len(s1 | s2) > 0.55
+
+    final_news = []
+    for item in unique_news:
+        if item["event_id"] in published_ids:
+            continue
+
+        title = item.get("title_original", "")
+        is_dup = False
+        for existing in final_news:
+            if is_similar(title, existing.get("title_original", "")):
+                is_dup = True
+                break
+
+        if not is_dup:
+            final_news.append(item)
+
+    return final_news
 
         except Exception as e:
             print(f"Помилка при читанні {source_name}: {e}")
