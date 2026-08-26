@@ -205,6 +205,34 @@ def fetch_article_text_sync(url: str) -> str:
     except Exception:
         return ""
 
+def calculate_confidence(source_trust: float, title: str) -> float:
+    t = title.lower()
+    conf = min(100.0, source_trust * 10)
+
+    # Чутки / непідтверджене
+    if any(w in t for w in ["за даними джерел", "якщо вірити", "повідомляють джерела", "нібито"]):
+        conf -= 35
+    if any(w in t for w in ["може", "планує", "розглядає", "збирається"]):
+        conf -= 15
+    if any(w in t for w in ["офіційно", "генштаб", "нбу", "кабмін", "президент", "постанова"]):
+        conf += 10
+
+    return max(20.0, min(100.0, conf))
+
+
+def is_material_update(old_title: str, new_title: str) -> bool:
+    """Чи є істотна нова інформація, а не перефраз."""
+    markers = [
+        "загибл", "поранен", "еваку", "підтверд", "офіційно",
+        "збільш", "зменш", "завершен", "віднов", "ліквідован",
+        "затриман", "оголошен", "набув чинност"
+    ]
+    new_l = new_title.lower()
+    old_l = old_title.lower()
+    new_has = any(m in new_l for m in markers)
+    old_has = any(m in old_l for m in markers)
+    return new_has and not old_has
+
 
 # ====================== ОСНОВНА ФУНКЦІЯ ======================
 def get_news_category(title: str) -> str:
@@ -293,7 +321,6 @@ def select_for_publish(news_list: list) -> list:
 
     return selected
 
-
 def fetch_and_score_news(limit_per_source: int = 8) -> list:
     all_news = []
 
@@ -306,7 +333,6 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                 if not title or len(title) < 15:
                     continue
 
-                # Дата
                 published = None
                 if hasattr(entry, "published"):
                     try:
@@ -326,17 +352,15 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
 
                 trust = float(meta.get("trust", 8))
                 importance = calculate_importance(title, trust)
-                confidence = min(1.0, trust / 10.0)
+                confidence = calculate_confidence(trust, title)
 
                 age_hours = max(
                     0.1,
                     (datetime.now(timezone.utc) - published).total_seconds() / 3600
                 )
-                # Свіжість: 1.0 → 0.55 за 48 годин
                 freshness = max(0.55, 1.0 - (age_hours / 48.0) * 0.45)
 
-                # Фінальний бал 0–100
-                final_score = importance * (0.75 + 0.25 * confidence) * freshness
+                final_score = importance * (0.75 + 0.25 * (confidence / 100.0)) * freshness
                 final_score = round(max(0.0, min(100.0, final_score)), 1)
 
                 if final_score < 45:
@@ -364,7 +388,7 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                     "source_trust": trust,
                     "published_at": published.isoformat(),
                     "importance_score": round(importance, 1),
-                    "confidence_score": round(confidence, 2),
+                    "confidence_score": round(confidence, 1),
                     "freshness_score": round(freshness, 2),
                     "final_score": final_score,
                     "class": news_class,
@@ -374,15 +398,14 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                     "video_url": None,
                 }
 
-                # Медіа з RSS
                 if "media_content" in entry:
                     for media in entry.media_content:
                         media_type = media.get("type", "")
                         media_url = media.get("url")
                         if not media_url:
                             continue
-                        if media_type.startswith("image") and is_bad_image(news_item["image_url"]):
-                            news_item["image_url"] = None
+                        if media_type.startswith("image") and not news_item["image_url"]:
+                            news_item["image_url"] = media_url
                         elif media_type.startswith("video") and not news_item["video_url"]:
                             news_item["video_url"] = media_url
 
@@ -397,6 +420,9 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
                         elif ltype.startswith("video") and not news_item["video_url"]:
                             news_item["video_url"] = href
 
+                if news_item.get("image_url") and is_bad_source_image(news_item["image_url"]):
+                    news_item["image_url"] = None
+
                 all_news.append(news_item)
 
         except Exception as e:
@@ -405,7 +431,6 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
 
     all_news.sort(key=lambda x: x["final_score"], reverse=True)
 
-    # Дедуп по event_id
     seen = set()
     unique_news = []
     for item in all_news:
@@ -413,7 +438,6 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
             seen.add(item["event_id"])
             unique_news.append(item)
 
-    # Антидубль + схожі заголовки
     def is_similar(t1, t2):
         s1 = set(t1.lower().split())
         s2 = set(t2.lower().split())
@@ -436,7 +460,8 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
         if not is_dup:
             final_news.append(item)
 
-    return final_news
+    return final_news  
+
 
 def get_top_news_for_brief(count: int = 4) -> list:
     news = fetch_and_score_news()
