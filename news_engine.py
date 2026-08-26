@@ -17,6 +17,37 @@ def load_published_ids():
             return set()
     return set()
 
+RECENT_TITLES_FILE = "recent_titles.json"
+
+
+def load_recent_titles() -> list:
+    if not os.path.exists(RECENT_TITLES_FILE):
+        return []
+    try:
+        with open(RECENT_TITLES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_recent_titles(titles: list):
+    titles = titles[-200:]
+    with open(RECENT_TITLES_FILE, "w", encoding="utf-8") as f:
+        json.dump(titles, f, ensure_ascii=False)
+
+
+def is_material_update(old_title: str, new_title: str) -> bool:
+    markers = [
+        "загибл", "поранен", "еваку", "підтверд", "офіційно",
+        "збільш", "зменш", "завершен", "віднов", "ліквідован",
+        "затриман", "оголошен", "набув чинност", "постражда"
+    ]
+    new_l = new_title.lower()
+    old_l = old_title.lower()
+    new_has = any(m in new_l for m in markers)
+    old_has = any(m in old_l for m in markers)
+    return new_has and not old_has
+
 def save_published_ids(ids):
     with open(PUBLISHED_FILE, "w") as f:
         json.dump(list(ids)[-400:], f)
@@ -218,20 +249,6 @@ def calculate_confidence(source_trust: float, title: str) -> float:
         conf += 10
 
     return max(20.0, min(100.0, conf))
-
-
-def is_material_update(old_title: str, new_title: str) -> bool:
-    """Чи є істотна нова інформація, а не перефраз."""
-    markers = [
-        "загибл", "поранен", "еваку", "підтверд", "офіційно",
-        "збільш", "зменш", "завершен", "віднов", "ліквідован",
-        "затриман", "оголошен", "набув чинност"
-    ]
-    new_l = new_title.lower()
-    old_l = old_title.lower()
-    new_has = any(m in new_l for m in markers)
-    old_has = any(m in old_l for m in markers)
-    return new_has and not old_has
 
 
 # ====================== ОСНОВНА ФУНКЦІЯ ======================
@@ -456,6 +473,15 @@ def fetch_and_score_news(limit_per_source: int = 8) -> list:
             if is_similar(title, existing.get("title_original", "")):
                 is_dup = True
                 break
+
+        if not is_dup:
+            for old_title in recent_titles:
+                if is_similar(title, old_title):
+                    if is_material_update(old_title, title):
+                        item["title_chitko"] = "ОНОВЛЕНО: " + title
+                    else:
+                        is_dup = True
+                    break
 
         if not is_dup:
             final_news.append(item)
