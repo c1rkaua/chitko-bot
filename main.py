@@ -212,7 +212,7 @@ async def cmd_news(message: Message):
         preview = f"<b>Score: {score}</b>\n\n{format_news_post(news)}"
         await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
 
-    await message.answer(f"Готово. Автоматично опубліковано: {auto_published}")
+    await message.answer(f"Готово. Автоматически добавил: {auto_published}")
 # ======================
 # Обробка кнопок
 # ======================
@@ -251,7 +251,7 @@ async def approve_one(callback: CallbackQuery):
     news = pending_news.get(event_id)
     
     if not news:
-        await callback.answer("Новина застаріла")
+        await callback.answer("Старая новость")
         return
     
     formatted = format_news_post(news)
@@ -272,7 +272,7 @@ async def approve_one(callback: CallbackQuery):
         del pending_news[event_id]
     
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Опубліковано ✅")
+    await callback.answer("Опубликовано ✅")
 
 
 @dp.callback_query(F.data.startswith("skip_one_"))
@@ -290,9 +290,9 @@ async def cmd_stats(message: Message):
     
     text = (
         f"<b>Статистика ЧІТКО</b>\n\n"
-        f"Опубліковано: <b>{published_count}</b>\n"
-        f"Зараз на апруві: <b>{pending_count}</b>\n\n"
-        f"Поріг авто: 75+\n"
+        f"Опубликовано: <b>{published_count}</b>\n"
+        f"Сейчас на апруве: <b>{pending_count}</b>\n\n"
+        f"Порог авто: 75+\n"
         f"Форс-мажор: 90+"
     )
     
@@ -368,7 +368,7 @@ async def scheduled_news():
     
     await bot.send_message(
         ADMIN_GROUP_ID,
-        f"Перевірив новини.\nАвто: {len(to_publish)}\nЧас: {datetime.now().strftime('%H:%M')}"
+        f"Проверил новости.\nАвто: {len(to_publish)}\nЧас: {datetime.now().strftime('%H:%M')}"
     )
             
 async def main():

@@ -333,16 +333,14 @@ def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()
     
-    # Чистимо
     text = text.replace("\n", " ").strip()
     while "  " in text:
         text = text.replace("  ", " ")
     
     import re
     sentences = re.split(r'(?<=[.!?])\s+', text)
-    sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+    sentences = [s.strip() for s in sentences if len(s.strip()) > 25]
     
-    # Емодзі
     title_lower = title.lower()
     if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
         emoji = "⚡️"
@@ -355,22 +353,26 @@ def format_news_post(news: dict) -> str:
     else:
         emoji = "▪️"
     
-    # Формуємо тіло
-    if len(sentences) >= 3:
-        body = " ".join(sentences[:2]) + "\n\n" + " ".join(sentences[2:4])
-    elif len(sentences) == 2:
-        body = sentences[0] + "\n\n" + sentences[1]
+    # Беремо більше тексту
+    if len(sentences) >= 2:
+        body = " ".join(sentences[:6])
     elif len(sentences) == 1:
-        # Одне речення — перевіряємо, чи не копія заголовка
-        s = sentences[0]
-        if s.lower()[:50] in title.lower() or title.lower()[:50] in s.lower():
-            body = s + "\n\nДеталі уточнюються."
-        else:
-            body = s
+        body = sentences[0]
     else:
         body = "Деталі уточнюються."
     
     post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
+    
+    # Ліміт підпису до фото в Telegram — 1024
+    if len(post) > 1000:
+        # Обрізаємо по останній крапці
+        cut = post[:980]
+        last_dot = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
+        if last_dot > 200:
+            post = cut[:last_dot + 1] + "\n\n<b>ЧІТКО</b>"
+        else:
+            post = cut.rsplit(" ", 1)[0] + "…\n\n<b>ЧІТКО</b>"
+    
     return post
 
 if __name__ == "__main__":
