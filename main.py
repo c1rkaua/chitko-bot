@@ -146,56 +146,73 @@ async def cmd_brief(message: Message):
 async def cmd_news(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
         return
-    
+
     await message.answer("Собираю новости...")
-    
+
     news_list = get_top_news_for_brief(10)
     auto_published = 0
-    
-    # Розділяємо
+
     force = [n for n in news_list if n.get("final_score", 0) >= 90]
     important = [n for n in news_list if 75 <= n.get("final_score", 0) < 90]
     for_approval = [n for n in news_list if 50 <= n.get("final_score", 0) < 75]
-    
-    # Автопублікація: форс-мажор (до 2) + 1 важлива
+
     to_auto = force[:2]
     if important:
         to_auto.append(important[0])
-    
+
     for news in to_auto:
-            if news.get("final_score", 0) >= 80 and news.get("source_url"):
-                full_text = fetch_article_text_sync(news["source_url"])
-                if full_text and len(full_text) > 100:
-                    news["text_chitko"] = full_text
+        if news.get("final_score", 0) >= 80 and news.get("source_url"):
+            full_text = fetch_article_text_sync(news["source_url"])
+            if full_text and len(full_text) > 100:
+                news["text_chitko"] = full_text
+
         formatted = format_news_post(news)
         image_url = news.get("image_url")
-        
+
         try:
             if image_url:
-                await bot.send_photo(CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML")
+                await bot.send_photo(
+                    CHANNEL_ID,
+                    photo=image_url,
+                    caption=formatted,
+                    parse_mode="HTML"
+                )
             else:
-                await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-        except:
-            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-        
+                await bot.send_message(
+                    CHANNEL_ID,
+                    formatted,
+                    parse_mode="HTML"
+                )
+        except Exception:
+            await bot.send_message(
+                CHANNEL_ID,
+                formatted,
+                parse_mode="HTML"
+            )
+
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
         auto_published += 1
-    
-    # На апрув
+
     for news in (important[1:] + for_approval)[:6]:
         pending_news[news["event_id"]] = news
-        
+
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ APPROVED", callback_data=f"approve_one_{news['event_id']}"),
-            InlineKeyboardButton(text="❌ DECLINE", callback_data=f"skip_one_{news['event_id']}")
+            InlineKeyboardButton(
+                text="✅ APPROVES",
+                callback_data=f"approve_one_{news['event_id']}"
+            ),
+            InlineKeyboardButton(
+                text="❌ DECLINE",
+                callback_data=f"skip_one_{news['event_id']}"
+            )
         ]])
-        
+
         score = news.get("final_score", 0)
         preview = f"<b>Score: {score}</b>\n\n{format_news_post(news)}"
         await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
-    
-    await message.answer(f"Готово. Сам добавил: {auto_published}")
+
+    await message.answer(f"Готово. Автоматично опубліковано: {auto_published}")
 # ======================
 # Обробка кнопок
 # ======================
