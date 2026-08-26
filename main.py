@@ -271,7 +271,7 @@ async def scheduled_news():
     if important:
         to_publish.append(important[0])
     
-    for news in to_publish:
+for news in to_publish:
         formatted = format_news_post(news)
         image_url = news.get("image_url")
         
@@ -285,6 +285,12 @@ async def scheduled_news():
         
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
+    
+    # Лог — тільки один раз після всіх публікацій
+    await bot.send_message(
+        ADMIN_GROUP_ID,
+        f"Перевірив новини.\nАвто: {len(to_publish)}\nЧас: {datetime.now().strftime('%H:%M')}"
+    )
             
 async def main():
     print("Я заработал")
