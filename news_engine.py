@@ -542,11 +542,32 @@ def prepare_image_with_watermark(image_url: str):
         print(f"WM: error {e}")
         return None
 
+def build_what_it_means(title: str, category: str) -> str:
+    t = title.lower()
+
+    if category == "tck":
+        return "Що це означає: змінюються правила для військовозобов'язаних. Перевірте актуальний статус у Резерв+ або офіційні роз'яснення."
+
+    if category == "economy":
+        if any(w in t for w in ["курс", "долар", "євро", "нбу"]):
+            return "Що це означає: курс НБУ — орієнтир для банків і цін. На готівковому ринку цифри можуть відрізнятися."
+        if any(w in t for w in ["тариф", "світло", "електро", "газ"]):
+            return "Що це означає: зміна може вплинути на рахунки населення. Дата набуття чинності — ключова."
+        if any(w in t for w in ["подат", "бюджет", "виплат", "пенсі"]):
+            return "Що це означає: рішення стосується грошей громадян. Важливо, коли саме воно починає діяти."
+        return "Що це означає: економічне рішення може вплинути на ціни, виплати або умови для бізнесу."
+
+    if category == "politics":
+        if any(w in t for w in ["закон", "ухвали", "набув чинност", "підписав"]):
+            return "Що це означає: після набуття чинності змінюються обов'язкові правила. Важлива дата старту."
+        return ""
+
+    return ""
+
 def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()
 
-    # Базове очищення
     text = text.replace("\n", " ").strip()
     while "  " in text:
         text = text.replace("  ", " ")
@@ -555,7 +576,6 @@ def format_news_post(news: dict) -> str:
     sentences = re.split(r'(?<=[.!?])\s+', text)
     sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
 
-    # Прибираємо сміттєві речення
     junk_parts = [
         "суспільне веде онлайн",
         "онлайн щодо",
@@ -574,7 +594,6 @@ def format_news_post(news: dict) -> str:
         clean_sentences.append(s)
     sentences = clean_sentences
 
-    # Емодзі
     title_lower = title.lower()
     if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
         emoji = "⚡️"
@@ -587,7 +606,6 @@ def format_news_post(news: dict) -> str:
     else:
         emoji = "▪️"
 
-    # Тіло з обов'язковими крапками
     if len(sentences) >= 3:
         body = (
             ensure_punctuation(sentences[0]) + "\n\n" +
@@ -601,9 +619,14 @@ def format_news_post(news: dict) -> str:
     else:
         body = "Деталі уточнюються."
 
-    post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
+    category = news.get("category") or get_news_category(title)
+    meaning = build_what_it_means(title, category)
 
-    # Ліміт підпису Telegram
+    if meaning:
+        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n{meaning}\n\n<b>ЧІТКО</b>"
+    else:
+        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
+
     if len(post) > 1000:
         cut = post[:960]
         last_dot = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
@@ -613,6 +636,16 @@ def format_news_post(news: dict) -> str:
             post = cut.rsplit(" ", 1)[0] + "…\n\n<b>ЧІТКО</b>"
 
     return post
+
+    # Емодзі
+    title_lower = title.lower()
+    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
+        emoji = "⚡️"
+    elif any(w in title_lower for w in ["тцк", "мобілізац", "повістк", "бусифікац", "рейд"]):
+        emoji = "⚠️"
+    elif any(w in title_lower for w in ["загибл", "поранен", "загинув", "загинула"]):
+        emoji = "🕯"
+
 
 if __name__ == "__main__":
     top = get_top_news_for_brief(5)

@@ -8,6 +8,7 @@ from news_engine import (
     get_news_category,
     prepare_image_with_watermark,
     is_bad_source_image,
+    ensure_punctuation,
 )
 import asyncio
 import aiohttp
@@ -69,27 +70,6 @@ async def get_fuel_prices():
 # ======================
 # Формування бріфу
 # ======================
-async def get_nbu_rates():
-    try:
-        import aiohttp
-        url = "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json"
-        timeout = aiohttp.ClientTimeout(total=10)
-        
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return "—", "—"
-                data = await resp.json()
-        
-        usd = next((x for x in data if x.get("cc") == "USD"), None)
-        eur = next((x for x in data if x.get("cc") == "EUR"), None)
-        
-        usd_rate = f"{usd['rate']:.2f}".replace(".", ",") if usd else "—"
-        eur_rate = f"{eur['rate']:.2f}".replace(".", ",") if eur else "—"
-        
-        return usd_rate, eur_rate
-    except Exception:
-        return "—", "—"
 
 async def create_morning_brief():
     from datetime import datetime
@@ -313,28 +293,54 @@ async def scheduled_brief():
     )
 
 async def scheduled_evening_digest():
-    news_list = get_top_news_for_brief(6)
-    
-    if not news_list:
+    news_list = get_top_news_for_brief(20)
+
+    # Беремо сильні, але не обов'язково breaking
+    items = []
+    for n in news_list:
+        score = n.get("final_score", 0)
+        cat = n.get("category") or get_news_category(n.get("title_original", ""))
+        if cat == "sport":
+            continue
+        if score < 50:
+            continue
+        items.append(n)
+
+    items = items[:5]
+    if not items:
+        await bot.send_message(
+            ADMIN_GROUP_ID,
+            "Вечірній дайджест: немає достатньо якісних новин."
+        )
         return
-    
-    from datetime import datetime
-    import pytz
-    
-    now = datetime.now(pytz.timezone("Europe/Kyiv"))
-    date_str = now.strftime("%d.%m")
-    
-    lines = [f"<b>ЧІТКО • Підсумки дня</b>\n{date_str}\n"]
-    
-    for i, news in enumerate(news_list[:5], 1):
-        title = news.get("title_chitko", news.get("title_original", "")).strip()
+
+    lines = []
+    for i, n in enumerate(items, 1):
+        title = n.get("title_chitko") or n.get("title_original", "")
+        title = ensure_punctuation(title.strip())
         lines.append(f"{i}. {title}")
-    
-    lines.append("\nГарного вечора.\n<b>ЧІТКО</b>")
-    
-    text = "\n".join(lines)
-    
+
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    except Exception:
+        now = datetime.now()
+
+    date_str = now.strftime("%d.%m.%Y")
+
+    text = (
+        f"<b>ГОЛОВНЕ ЗА ДЕНЬ</b>\n"
+        f"{date_str}\n\n"
+        + "\n\n".join(lines)
+        + "\n\n<b>ЧІТКО. Коротко. По суті.</b>"
+    )
+
     await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+    await bot.send_message(
+        ADMIN_GROUP_ID,
+        "Вечірній дайджест опубліковано в канал."
+    )
 
 async def send_news_to_channel(news: dict, formatted: str):
     import os
