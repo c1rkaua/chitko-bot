@@ -462,26 +462,40 @@ def apply_watermark(image_path: str, output_path: str) -> str:
         draw = ImageDraw.Draw(overlay)
 
         text = "ЧІТКО"
+        font_size = max(32, width // 18)
+
         try:
             font = ImageFont.truetype(
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                size=max(24, width // 25)
+                size=font_size
             )
         except Exception:
-            font = ImageFont.load_default()
+            try:
+                font = ImageFont.truetype(
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                    size=font_size
+                )
+            except Exception:
+                font = ImageFont.load_default()
 
         bbox = draw.textbbox((0, 0), text, font=font)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]
 
-        x = width - tw - 20
-        y = height - th - 20
+        x = width - tw - 24
+        y = height - th - 24
 
-        draw.text((x + 2, y + 2), text, font=font, fill=(0, 0, 0, 120))
-        draw.text((x, y), text, font=font, fill=(255, 255, 255, 160))
+        # Підложка для читабельності
+        pad = 10
+        draw.rectangle(
+            [x - pad, y - pad, x + tw + pad, y + th + pad],
+            fill=(0, 0, 0, 110)
+        )
+
+        draw.text((x, y), text, font=font, fill=(255, 255, 255, 230))
 
         result = Image.alpha_composite(base, overlay).convert("RGB")
-        result.save(output_path, "JPEG", quality=90)
+        result.save(output_path, "JPEG", quality=92)
         return output_path
     except Exception as e:
         print(f"Watermark error: {e}")
