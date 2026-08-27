@@ -192,17 +192,13 @@ async def create_morning_brief():
 async def cmd_brief(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
         return
-    
-    text = await create_morning_brief()
-    
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ APPROVED", callback_data="approve_brief"),
-            InlineKeyboardButton(text="❌ DECLINE", callback_data="skip_brief")
-        ]
-    ])
-    
-    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
+    try:
+        await message.answer("Збираю бриф...")
+        text = await create_morning_brief()
+        await message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"Бриф упав: {e}")
+        print(f"BRIEF error: {e}")
 
 @dp.message(Command("news"))
 async def cmd_news(message: Message):
