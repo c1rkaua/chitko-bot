@@ -672,13 +672,7 @@ def format_news_post(news: dict) -> str:
     else:
         body = "Деталі уточнюються."
 
-    category = news.get("category") or get_news_category(title)
-    meaning = build_what_it_means(title, category)
-
-    if meaning:
-        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n{meaning}\n\n<b>ЧІТКО</b>"
-    else:
-        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
+    post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
 
     if len(post) > 1000:
         cut = post[:960]
