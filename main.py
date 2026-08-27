@@ -24,6 +24,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 from air_engine import process_air_cycle, format_air_post
+from air_attack import ingest_targets, close_attack, format_summary, load_attack
 
 pending_news = {}  # тимчасове сховище новин на апрув
 
@@ -236,6 +237,43 @@ async def cmd_air(message: Message):
         await bot.send_message(
             CHANNEL_ID,
             format_air_post(decision),
+            parse_mode="HTML"
+        )
+
+@dp.message(Command("threat"))
+async def cmd_threat(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 3:
+        await message.answer(
+            "Формат:\n/threat BALLISTIC 2 Київ\n"
+            "Типи: BALLISTIC CRUISE UAV AERO HYPER UNKNOWN"
+        )
+        return
+
+    t = parts[1].upper()
+    try:
+        n = int(parts[2])
+    except Exception:
+        await message.answer("Третя частина — число нових цілей.")
+        return
+
+    target = "Київ"
+    if len(parts) >= 4:
+        raw = parts[3].lower()
+        if "київщин" in raw or "област" in raw:
+            target = "Київщина"
+
+    result = ingest_targets(t, n, target, is_new=True)
+    await message.answer(
+        f"{result.get('action')}\n{result.get('reason')}"
+    )
+    if result.get("action") in ("PUBLISH", "UPDATE") and result.get("message"):
+        await bot.send_message(
+            CHANNEL_ID,
+            result["message"],
             parse_mode="HTML"
         )
 
@@ -504,6 +542,8 @@ async def scheduled_air():
             ADMIN_GROUP_ID,
             f"Тривога опублікована.\n{decision.get('reason', '')}"
         )
+        if decision.get("event_type") == "ALERT_END":
+            close_attack()
     except Exception as e:
         print(f"AIR send error: {e}")
             
