@@ -148,6 +148,20 @@ def format_air_post(decision: dict) -> str:
 def process_air_cycle() -> dict:
     state = load_state()
     current = fetch_official_alerts()
+
+    if not state.get("initialized"):
+        state["kyiv_alert"] = current.get("kyiv", False)
+        state["oblast_alert"] = current.get("oblast", False)
+        state["initialized"] = True
+        state["last_post_at"] = 0
+        state["last_event"] = ""
+        save_state(state)
+        return {
+            "action": "IGNORE",
+            "reason": "Старт бота: стан записано, без публікації.",
+            "current": current,
+        }
+
     decision = decide_alert_action(current, state)
 
     now_ts = time.time()
@@ -164,6 +178,7 @@ def process_air_cycle() -> dict:
 
     state["kyiv_alert"] = current.get("kyiv", False)
     state["oblast_alert"] = current.get("oblast", False)
+    state["initialized"] = True
     save_state(state)
 
     decision["current"] = current

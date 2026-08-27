@@ -1,4 +1,4 @@
-import json
+это import json
 import os
 import requests
 
@@ -83,13 +83,20 @@ def fetch_live_objects() -> list:
 
 
 def poll_new_targets() -> list:
-    """
-    Повертає список рішень ingest_targets (0–кілька).
-    """
+    from air_attack import ingest_combo
+
     seen = load_seen()
     objects = fetch_live_objects()
-    fresh = []
 
+    if not seen and objects:
+        for obj in objects:
+            oid = str(obj.get("id") or obj.get("key") or "")
+            if oid:
+                seen.add(oid)
+        save_seen(seen)
+        return []
+
+    fresh = []
     for obj in objects:
         oid = str(obj.get("id") or obj.get("key") or "")
         if not oid or oid in seen:
@@ -107,8 +114,7 @@ def poll_new_targets() -> list:
         t = _map_type(obj)
         buckets[t] = buckets.get(t, 0) + 1
 
-    results = []
-    target = "Київ"
-    for t, n in buckets.items():
-        results.append(ingest_targets(t, n, target, is_new=True))
-    return results
+    if not buckets:
+        return []
+
+    return [ingest_combo(buckets, "Київ")]

@@ -108,12 +108,15 @@ def format_combo(totals: dict, target: str) -> str:
         n = totals.get(t, 0)
         if n:
             lines.append(f"• {_count_phrase(n, t)}")
-    body = (
-        f"🔴 Комбінована ракетна загроза {_direction(target)}.\n\n"
-        "Зафіксовано:\n" + "\n".join(lines)
+    text = (
+        f"Зафіксовано {_direction(target)}:\n"
+        + "\n".join(lines)
     )
-    return f"<b>🔴 Комбінована ракетна загроза</b>\n\n{body}\n\n<b>ЧІТКО</b>"
-
+    return (
+        f"<b>🔴 Комбінована повітряна загроза</b>\n\n"
+        f"{text}\n\n"
+        f"<b>ЧІТКО</b>"
+    )
 
 def format_summary(totals: dict, target: str) -> str:
     parts = []
@@ -187,6 +190,75 @@ def ingest_targets(target_type: str, count: int, target: str = "Київ", is_ne
         "event_id": data["event_id"],
         "message": msg,
         "reason": f"+{count} {t}",
+        "totals": data["totals"],
+    }
+
+def ingest_combo(buckets: dict, target: str = "Київ") -> dict:
+    """
+    buckets: {"BALLISTIC": 3, "CRUISE": 4, "UAV": 15}
+    """
+    clean = {k: int(v) for k, v in buckets.items() if int(v) > 0}
+    if not clean:
+        return {"action": "IGNORE", "reason": "Порожньо.", "message": ""}
+
+    if len(clean) == 1:
+        t, n = next(iter(clean.items()))
+        return ingest_targets(t, n, target, is_new=True)
+
+    data = load_attack()
+    now = time.time()
+
+    if data.get("active") and now - data.get("last_update", 0) > PAUSE_NEW_EVENT_SEC:
+        data = empty_attack()
+
+    if not data.get("active"):
+        data = empty_attack()
+        data["active"] = True
+        data["event_id"] = f"ATTACK_KYIV_{int(now)}"
+        data["target"] = target
+        for t, n in clean.items():
+            data["totals"][t] = data["totals"].get(t, 0) + n
+        data["last_update"] = now
+        data["updates_count"] = 0
+        save_attack(data)
+        return {
+            "action": "PUBLISH",
+            "event_id": data["event_id"],
+            "message": format_combo(data["totals"], target),
+            "reason": "Комбінована атака.",
+            "totals": data["totals"],
+        }
+
+    lines = []
+    for t, n in clean.items():
+        already = data["totals"].get(t, 0) > 0
+        data["totals"][t] = data["totals"].get(t, 0) + n
+        if already:
+            if n == 1:
+                lines.append(f"UPD: +1 {TYPE_UA_ONE[t]} {_direction(target)}.")
+            else:
+                lines.append(f"UPD: +{n} {TYPE_UA[t]} {_direction(target)}.")
+        else:
+            lines.append(f"UPD: додатково {_count_phrase(n, t)} {_direction(target)}.")
+
+    data["last_update"] = now
+    data["updates_count"] = data.get("updates_count", 0) + 1
+    save_attack(data)
+
+    msg = "<b>" + "</b>\n\n<b>".join(lines) + "</b>\n\n<b>ЧІТКО</b>"
+    if len(lines) >= 2:
+        msg = format_combo(data["totals"], target)
+        msg = (
+            f"<b>⚠️ Оновлення щодо повітряної загрози</b>\n\n"
+            + "\n".join(lines)
+            + "\n\n<b>ЧІТКО</b>"
+        )
+
+    return {
+        "action": "UPDATE",
+        "event_id": data["event_id"],
+        "message": msg,
+        "reason": "Комбіноване оновлення.",
         "totals": data["totals"],
     }
 
