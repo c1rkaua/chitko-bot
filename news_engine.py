@@ -929,7 +929,6 @@ def apply_editorial_caps(news: dict) -> dict:
         score = min(100, score + 12)
 
     news["final_score"] = score
-            news = apply_editorial_caps(news)
     return news
 
 if __name__ == "__main__":
