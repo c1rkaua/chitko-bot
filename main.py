@@ -678,18 +678,17 @@ async def scheduled_brief():
     )
 
 async def scheduled_evening_digest():
-    news_list = get_top_news_for_brief(20)
-
-    # Беремо сильні, але не обов'язково breaking
-    items = []
-    for n in news_list:
-        score = n.get("final_score", 0)
-        cat = n.get("category") or get_news_category(n.get("title_original", ""))
-        if cat == "sport":
-            continue
-        if score < 50:
-            continue
-        items.append(n)
+    text = await create_evening_digest()
+    cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
+    if os.path.exists(cover):
+        await bot.send_photo(
+            CHANNEL_ID,
+            photo=FSInputFile(cover),
+            caption=text,
+            parse_mode="HTML",
+        )
+    else:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
 
     items = items[:5]
     if not items:
@@ -897,15 +896,6 @@ async def main():
         "interval",
         seconds=20
     )
-    scheduler.add_job(
-        scheduled_digest,
-        "cron",
-        hour=22,
-        minute=0,
-        timezone="Europe/Kyiv",
-    )
-    
-    
 
     scheduler.start()
     print("Планувальник запущено")
