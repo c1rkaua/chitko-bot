@@ -244,6 +244,37 @@ def format_evening_digest_text(rates, fuel, headlines: list) -> str:
     lines += ["", "<b>ЧІТКО. Коротко. По суті.</b>"]
     return "\n".join(lines)
 
+def _headline_key(title: str) -> str:
+    t = (title or "").lower()
+    if "санду" in t or "кишин" in t or "молдов" in t:
+        return "moldova_sandu"
+    if "патріот" in t or "patriot" in t:
+        return "patriot"
+    if "140 дрон" in t or "повітряні сили" in t or "пс:" in t:
+        return "ps_drones"
+    if "києв" in t and ("вибух" in t or "дрон" in t):
+        return "kyiv_strike"
+    words = [w for w in t.replace("«", " ").replace("»", " ").split() if len(w) > 4]
+    return " ".join(sorted(words)[:6])
+
+
+def pick_brief_headlines(items: list, limit: int = 3) -> list:
+    seen = set()
+    out = []
+    ranked = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
+    for h in ranked:
+        title = (h.get("title_chitko") or h.get("title_original") or "").strip()
+        if not title:
+            continue
+        key = _headline_key(title)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+        if len(out) >= limit:
+            break
+    return out
+
 @dp.message(Command("digest"))
 async def cmd_digest(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
@@ -420,9 +451,11 @@ async def create_morning_brief():
         fuel = {"a95": None, "dp": None, "lpg": None}
     try:
         headlines = get_top_news_for_brief(5)
+                headlines = pick_brief_headlines(headlines, 3)
     except Exception as e:
         print(f"BRIEF news: {e}")
         headlines = []
+                headlines = pick_brief_headlines(headlines, 3)
     return format_morning_brief_text(rates, fuel, headlines)
 
 async def create_evening_digest():
@@ -430,8 +463,10 @@ async def create_evening_digest():
     fuel = get_fuel_prices()
     try:
         headlines = get_top_news_for_brief(8)
+                headlines = pick_brief_headlines(headlines, 5)
     except Exception:
         headlines = []
+                headlines = pick_brief_headlines(headlines, 5)
     return format_evening_digest_text(rates, fuel, headlines)
 
 async def scheduled_digest():

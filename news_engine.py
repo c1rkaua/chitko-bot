@@ -908,6 +908,29 @@ def format_news_post(news: dict) -> str:
 
     return post
 
+def apply_editorial_caps(news: dict) -> dict:
+    title = news.get("title_chitko") or news.get("title_original") or news.get("title") or ""
+    text = news.get("text") or news.get("summary") or news.get("body") or ""
+    t = f"{title} {text}".lower()
+    score = float(news.get("final_score") or 0)
+
+    ukraine_hit = any(x in t for x in [
+        "удар по", "обстріл", "вибух у", "шахед", "балістик",
+        "по києву", "по харков", "по одесі", "тцк",
+    ])
+    filler = any(x in t for x in [
+        "захаров", "мід рф", "кремль заявив", "санду",
+        "кишинів", "молдов", "вірмен",
+    ])
+
+    if filler and not ukraine_hit:
+        score = min(score, 58)
+    if ukraine_hit:
+        score = min(100, score + 12)
+
+    news["final_score"] = score
+            news = apply_editorial_caps(news)
+    return news
 
 if __name__ == "__main__":
     top = get_top_news_for_brief(5)
