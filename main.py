@@ -172,7 +172,7 @@ def get_fuel_prices() -> dict:
         except Exception as e:
             print(f"FUEL nefterynok error: {e}")
 
-    return outdef format_evening_digest_text
+    return out
 # ======================
 # Формування бріфу
 # ======================
