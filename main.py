@@ -366,13 +366,16 @@ async def cmd_brief(message: Message):
             headlines = get_top_news_for_brief(5)
         except Exception:
             headlines = []
-        path = render_brief_card(rates, fuel, headlines)
-        caption = format_morning_brief_text(rates, fuel, headlines)
-        await message.answer_photo(
-            photo=FSInputFile(path),
-            caption=caption,
-            parse_mode="HTML",
-        )
+        text = format_morning_brief_text(rates, fuel, headlines)
+        cover = os.path.join(os.path.dirname(__file__), "assets", "cover_ranok.jpg")
+        if os.path.exists(cover):
+            await message.answer_photo(
+                photo=FSInputFile(cover),
+                caption=text,
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer(text, parse_mode="HTML")
     except Exception as e:
         await message.answer(f"Бриф упав: {e}")
         print(f"BRIEF error: {e}")
