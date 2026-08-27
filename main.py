@@ -589,8 +589,9 @@ async def main():
     )
 
     scheduler.add_job(
-        scheduled_evening_digest,
-        CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv")
+        scheduled_air,
+        "interval",
+        seconds=20
     )
     scheduler.add_job(
         scheduled_air,

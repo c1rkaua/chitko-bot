@@ -24,6 +24,8 @@ def load_state() -> dict:
         "last_end_at": 0,
         "last_post_at": 0,
         "last_event": "",
+        "kyiv_end_sent": False,
+        "oblast_end_sent": False,
     }
     if not os.path.exists(STATE_FILE):
         return empty
@@ -149,25 +151,28 @@ def fetch_official_alerts() -> dict:
     try:
         resp = requests.get("https://neptun.in.ua/api/v1/alerts", timeout=8)
         if resp.status_code != 200:
+            print(f"AIR API status {resp.status_code}")
             return result
         data = resp.json()
     except Exception as e:
         print(f"AIR API error: {e}")
         return result
 
-    oblasts = data.get("oblasts") or []
-    raions = data.get("raions") or []
+    items = (data.get("oblasts") or []) + (data.get("raions") or [])
+    for item in items:
+        name = (item.get("name") or "").strip().lower()
+        oblast = (item.get("oblast") or "").strip().lower()
+        key = (item.get("key") or "").strip().lower()
+        blob = f"{name} {oblast} {key}"
 
-    for item in oblasts + raions:
-        name = (item.get("name") or "") + " " + (item.get("oblast") or "")
-        name_l = name.lower()
-        if "м. київ" in name_l or name_l.strip() == "київ":
+        if name in ("київ", "м. київ", "місто київ") or key in ("kyiv", "m.kyiv", "kyiv_city"):
             result["kyiv"] = True
-        if "київська область" in name_l:
-            result["oblast"] = True
+        elif "київська область" in blob or key.startswith("kyivska"):
+            if name not in ("київ", "м. київ"):
+                result["oblast"] = True
 
+    print(f"AIR status kyiv={result['kyiv']} oblast={result['oblast']}")
     return result
-
 
 def decide_alert_action(current: dict, state: dict) -> dict:
     kyiv_was = state.get("kyiv_alert", False)
@@ -183,31 +188,31 @@ def decide_alert_action(current: dict, state: dict) -> dict:
             return text + "\n\n" + extra
         return text
 
-    if kyiv_was and not kyiv_now and obl_now:
+    if (not kyiv_now) and obl_now and not state.get("kyiv_end_sent"):
         extra = f"У Києві тривога тривала {kyiv_dur}." if kyiv_dur else ""
         return {
             "action": "PUBLISH",
             "event_type": "ALERT_END_KYIV",
             "title": "🟢 Відбій у Києві",
             "text": with_dur(random.choice(KYIV_OFF_OBLAST_ON), extra),
-            "reason": "Відбій лише в Києві.",
+            "reason": "Відбій у Києві, область ще під сиреною.",
         }
 
-    if obl_was and not obl_now and kyiv_now:
+    if (not obl_now) and kyiv_now and not state.get("oblast_end_sent"):
         extra = f"В області тривога тривала {obl_dur}." if obl_dur else ""
         return {
             "action": "PUBLISH",
             "event_type": "ALERT_END_OBLAST",
             "title": "🟢 Відбій у Київській області",
             "text": with_dur(random.choice(OBLAST_OFF_KYIV_ON), extra),
-            "reason": "Відбій лише в області.",
+            "reason": "Відбій в області, Київ ще під сиреною.",
         }
 
     if (kyiv_was or obl_was) and (not kyiv_now) and (not obl_now):
         bits = []
-        if kyiv_was and kyiv_dur:
+        if kyiv_dur:
             bits.append(f"Київ — {kyiv_dur}.")
-        if obl_was and obl_dur:
+        if obl_dur:
             bits.append(f"Область — {obl_dur}.")
         pool = BOTH_CLEAR_NIGHT if _is_night() else BOTH_CLEAR_DAY
         return {
@@ -271,7 +276,6 @@ def decide_alert_action(current: dict, state: dict) -> dict:
 
     return {"action": "IGNORE", "reason": "Статус не змінився."}
 
-
 def format_air_post(decision: dict) -> str:
     title = decision.get("title", "").strip()
     text = decision.get("text", "").strip()
@@ -289,9 +293,9 @@ def process_air_cycle() -> dict:
         state["initialized"] = True
         state["last_post_at"] = 0
         state["last_event"] = ""
-        if current.get("kyiv") and not state.get("kyiv_since"):
+        if current.get("kyiv"):
             state["kyiv_since"] = now_ts
-        if current.get("oblast") and not state.get("oblast_since"):
+        if current.get("oblast"):
             state["oblast_since"] = now_ts
         save_state(state)
         return {
@@ -301,7 +305,6 @@ def process_air_cycle() -> dict:
         }
 
     decision = decide_alert_action(current, state)
-
     now_ts = time.time()
 
     if decision.get("action") == "PUBLISH":
@@ -325,8 +328,22 @@ def process_air_cycle() -> dict:
     if not current.get("oblast"):
         state["oblast_since"] = 0
 
-    if decision.get("action") == "PUBLISH" and str(decision.get("event_type", "")).startswith("ALERT_END"):
+    et = decision.get("event_type", "")
+    if et == "ALERT_END_KYIV":
+        state["kyiv_end_sent"] = True
         state["last_end_at"] = now_ts
+    if et == "ALERT_END_OBLAST":
+        state["oblast_end_sent"] = True
+        state["last_end_at"] = now_ts
+    if et == "ALERT_END":
+        state["kyiv_end_sent"] = True
+        state["oblast_end_sent"] = True
+        state["last_end_at"] = now_ts
+    if et in ("ALERT_START", "ALERT_UPDATE"):
+        if current.get("kyiv"):
+            state["kyiv_end_sent"] = False
+        if current.get("oblast"):
+            state["oblast_end_sent"] = False
 
     state["kyiv_alert"] = current.get("kyiv", False)
     state["oblast_alert"] = current.get("oblast", False)
@@ -335,5 +352,4 @@ def process_air_cycle() -> dict:
 
     decision["current"] = current
     return decision
-
         
