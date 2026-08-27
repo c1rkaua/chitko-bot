@@ -531,6 +531,23 @@ async def scheduled_news():
         f"Время: {datetime.now().strftime('%H:%M')}"
     )
 
+async def scheduled_air():
+    decision = process_air_cycle()
+    if decision.get("action") != "PUBLISH":
+        return
+
+    text = format_air_post(decision)
+    try:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        await bot.send_message(
+            ADMIN_GROUP_ID,
+            f"Тривога опублікована.\n{decision.get('reason', '')}"
+        )
+        if decision.get("event_type") == "ALERT_END":
+            close_attack()
+    except Exception as e:
+        print(f"AIR send error: {e}")
+
 async def scheduled_threats():
     try:
         results = poll_new_targets()
