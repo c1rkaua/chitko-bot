@@ -296,74 +296,43 @@ def build_alert_start_text(kind: str, kyiv: bool, oblast: bool, closer: str = ""
         f"Пройдіть в укриття."
     )
 
-def process_air_cycle() -> dict:
+async def process_air_cycle() -> dict:
     state = load_state()
-    current = fetch_official_alerts()
+    current = get_current_alerts()
 
-    if not state.get("initialized"):
-        now_ts = time.time()
-        state["kyiv_alert"] = current.get("kyiv", False)
-        state["oblast_alert"] = current.get("oblast", False)
-        state["initialized"] = True
-        state["last_post_at"] = 0
-        state["last_event"] = ""
-        if current.get("kyiv"):
-            state["kyiv_since"] = now_ts
-        if current.get("oblast"):
-            state["oblast_since"] = now_ts
-        save_state(state)
-        return {
-            "action": "IGNORE",
-            "reason": "Старт бота: стан записано, без публікації.",
-            "current": current,
-        }
+    kyiv_now = bool(
+        current.get("kyiv")
+        or current.get("kyiv_alert")
+        or current.get("kyiv_on")
+    )
+    oblast_now = bool(
+        current.get("oblast")
+        or current.get("oblast_alert")
+        or current.get("oblast_on")
+    )
 
-    decision = decide_alert_action(current, state)
-    now_ts = time.time()
+    decision = decide_alert_action(state, kyiv_now, oblast_now)
+    action = decision.get("action") or "IGNORE"
+    text = (decision.get("text") or "").strip()
 
-    if decision.get("action") == "PUBLISH":
-        last_event = state.get("last_event", "")
-        if (
-            decision.get("event_type") == last_event
-            and now_ts - state.get("last_post_at", 0) < 20
-        ):
-            decision = {"action": "IGNORE", "reason": "Антиспам 20с."}
-        else:
-            state["last_post_at"] = now_ts
-            state["last_event"] = decision.get("event_type", "")
+    if action != "IGNORE" and text:
+        try:
+            from main import bot, CHANNEL_ID
+            await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        except Exception as e:
+            print(f"AIR send error: {e}")
 
-    if current.get("kyiv") and not state.get("kyiv_since"):
-        state["kyiv_since"] = now_ts
-    if not current.get("kyiv"):
-        state["kyiv_since"] = 0
-
-    if current.get("oblast") and not state.get("oblast_since"):
-        state["oblast_since"] = now_ts
-    if not current.get("oblast"):
-        state["oblast_since"] = 0
-
-    et = decision.get("event_type", "")
-    if et == "ALERT_END_KYIV":
-        state["kyiv_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et == "ALERT_END_OBLAST":
-        state["oblast_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et == "ALERT_END":
-        state["kyiv_end_sent"] = True
-        state["oblast_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et in ("ALERT_START", "ALERT_UPDATE"):
-        if current.get("kyiv"):
-            state["kyiv_end_sent"] = False
-        if current.get("oblast"):
-            state["oblast_end_sent"] = False
-
-    state["kyiv_alert"] = current.get("kyiv", False)
-    state["oblast_alert"] = current.get("oblast", False)
+    state["kyiv_alert"] = current.get("kyiv", kyiv_now)
+    state["oblast_alert"] = current.get("oblast", oblast_now)
     state["initialized"] = True
+    if decision.get("last_end_at"):
+        state["last_end_at"] = decision["last_end_at"]
     save_state(state)
 
     decision["current"] = current
+    decision["action"] = action
+    decision["text"] = text
+    decision["kyiv"] = kyiv_now
+    decision["oblast"] = oblast_now
     return decision
         
