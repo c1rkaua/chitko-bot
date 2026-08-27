@@ -41,91 +41,149 @@ scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Kyiv"))
 # ======================
 # Отримання курсів НБУ
 # ======================
-async def get_nbu_rates():
+def get_nbu_rates() -> dict:
+    import requests
+    from datetime import datetime, timedelta
+
+    out = {
+        "usd": None,
+        "eur": None,
+        "pln": None,
+        "usd_delta": None,
+        "eur_delta": None,
+        "pln_delta": None,
+    }
     try:
-        import aiohttp
-        url = "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json"
-        timeout = aiohttp.ClientTimeout(total=10)
+        today = requests.get(
+            "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json",
+            timeout=10,
+        ).json()
+        yday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+        prev = requests.get(
+            f"https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?date={yday}&json",
+            timeout=10,
+        ).json()
+    except Exception as e:
+        print(f"NBU error: {e}")
+        return out
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return "—", "—"
-                data = await resp.json()
+    def pick(rows, code):
+        for row in rows:
+            if row.get("cc") == code:
+                return float(row.get("rate") or 0)
+        return None
 
-        usd = next((x for x in data if x.get("cc") == "USD"), None)
-        eur = next((x for x in data if x.get("cc") == "EUR"), None)
+    out["usd"] = pick(today, "USD")
+    out["eur"] = pick(today, "EUR")
+    out["pln"] = pick(today, "PLN")
+    pu = pick(prev, "USD")
+    pe = pick(prev, "EUR")
+    pp = pick(prev, "PLN")
+    if out["usd"] and pu:
+        out["usd_delta"] = round(out["usd"] - pu, 2)
+    if out["eur"] and pe:
+        out["eur_delta"] = round(out["eur"] - pe, 2)
+    if out["pln"] and pp:
+        out["pln_delta"] = round(out["pln"] - pp, 2)
+    return out
 
-        usd_rate = f"{usd['rate']:.2f}".replace(".", ",") if usd else "—"
-        eur_rate = f"{eur['rate']:.2f}".replace(".", ",") if eur else "—"
+def fmt_uah(n) -> str:
+    if n is None:
+        return "—"
+    return f"{n:.2f}".replace(".", ",")
 
-        return usd_rate, eur_rate
-    except Exception:
-        return "—", "—"
+
+def fmt_delta(n) -> str:
+    if n is None:
+        return ""
+    arrow = "↑" if n > 0 else ("↓" if n < 0 else "→")
+    return f"{arrow} {abs(n):.2f}".replace(".", ",")
 
 # ======================
 # Отримання цін на паливо (тимчасово)
 # ======================
-async def get_fuel_prices():
-    return {
-        "A-95": 80.50,
-        "DP": 91.80,
-        "GAS": 43.20
-    }
+def get_fuel_prices() -> dict:
+    """
+    Мінфін index, fallback — порожні поля.
+    """
+    import re
+    import requests
+
+    out = {"a95": None, "dp": None, "lpg": None}
+    try:
+        html = requests.get(
+            "https://index.minfin.com.ua/ua/markets/fuel/tm/",
+            headers={"User-Agent": "Mozilla/5.0 ChitkoBot"},
+            timeout=12,
+        ).text
+    except Exception as e:
+        print(f"FUEL error: {e}")
+        return out
+
+    def grab(label):
+        m = re.search(
+            label + r".{0,180}?(\d+[.,]\d{2})",
+            html,
+            flags=re.I | re.S,
+        )
+        if not m:
+            return None
+        return float(m.group(1).replace(",", "."))
+
+    out["a95"] = grab(r"А-95")
+    out["dp"] = grab(r"ДП|Дизель")
+    out["lpg"] = grab(r"Газ|LPG")
+    return out
 # ======================
 # Формування бріфу
 # ======================
+def format_morning_brief_text(rates, fuel, headlines: list) -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    days = [
+        "понеділок",
+        "вівторок",
+        "середа",
+        "четвер",
+        "п’ятниця",
+        "субота",
+        "неділя",
+    ]
+    date_line = f"{now.strftime('%d.%m.%Y')} • {days[now.weekday()]}"
+
+    lines = [
+        "<b>ЧІТКО</b>",
+        date_line,
+        "",
+        "<b>КУРС НБУ</b>",
+        f"USD    {fmt_uah(rates.get('usd'))} ₴    {fmt_delta(rates.get('usd_delta'))}",
+        f"EUR    {fmt_uah(rates.get('eur'))} ₴    {fmt_delta(rates.get('eur_delta'))}",
+        "",
+        "<b>ПАЛИВО</b>",
+        f"А-95    {fmt_uah(fuel.get('a95'))} ₴/л",
+        f"ДП      {fmt_uah(fuel.get('dp'))} ₴/л",
+        f"Газ     {fmt_uah(fuel.get('lpg'))} ₴/л",
+        "",
+        "<b>ГОЛОВНЕ ЗА НІЧ</b>",
+    ]
+    for i, h in enumerate(headlines[:3], 1):
+        title = (h.get("title_chitko") or h.get("title_original") or "").strip()
+        title = title.rstrip(".")
+        lines.append(f"{i}. {title}")
+
+    lines += ["", "<b>ЧІТКО. Коротко. По суті.</b>"]
+    return "\n".join(lines)
 
 async def create_morning_brief():
-    from datetime import datetime
-    import pytz
-    
-    # Курси і паливо (поки заглушки)
-    usd = await get_nbu_rates()
-    eur = await get_nbu_rates()
-    a95 = "58,40"
-    dp = "56,10"
-    gas = "34,20"
-    
-    news_list = get_top_news_for_brief(4)
-    
-    news_lines = []
-    for i, news in enumerate(news_list, 1):
-        title = news.get("title_chitko", news.get("title_original", "")).strip()
-        news_lines.append(f"{i}. {title}")
-    
-    news_text = "\n".join(news_lines) if news_lines else "1. Новини оновлюються..."
-    
-    now = datetime.now(pytz.timezone("Europe/Kyiv"))
-    today = now.strftime("%d.%m.%Y")
-    
-    days = {
-        "Monday": "понеділок",
-        "Tuesday": "вівторок",
-        "Wednesday": "середа",
-        "Thursday": "четвер",
-        "Friday": "п’ятниця",
-        "Saturday": "субота",
-        "Sunday": "неділя"
-    }
-    weekday_ua = days.get(now.strftime("%A"), "")
-    
-    text = (
-        f"<b>ЧІТКО • Ранковий бріф</b>\n"
-        f"{today} • {weekday_ua}\n\n"
-        f"<b>КУРС НБУ</b>\n"
-        f"$ {usd}\n"
-        f"€ {eur}\n\n"
-        f"<b>ПАЛИВО</b>\n"
-        f"А-95 — {a95} ₴\n"
-        f"ДП — {dp} ₴\n"
-        f"Газ — {gas} ₴\n\n"
-        f"<b>ГОЛОВНЕ ЗА НІЧ</b>\n"
-        f"{news_text}\n\n"
-        f"<b>ЧІТКО. Коротко. По суті.</b>"
-    )
-    
-    return text
+    rates = get_nbu_rates()
+    fuel = get_fuel_prices()
+    try:
+        headlines = get_top_news_for_brief(5)
+    except Exception:
+        headlines = []
+    return format_morning_brief_text(rates, fuel, headlines)
     
 # ======================
 # Команда /brief
