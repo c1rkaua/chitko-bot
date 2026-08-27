@@ -622,28 +622,27 @@ def build_live_meaning(title: str, body: str, category: str = "") -> str:
     import requests
 
     api_key = os.getenv("XAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    print(f"LLM meaning: key={'yes' if api_key else 'NO'}")
     if not api_key:
         return ""
 
     use_xai = bool(os.getenv("XAI_API_KEY"))
-    url = (
-        "https://api.x.ai/v1/chat/completions"
-        if use_xai
-        else "https://api.openai.com/v1/chat/completions"
-    )
-    model = "grok-2-latest" if use_xai else "gpt-4o-mini"
+    if use_xai:
+        url = "https://api.x.ai/v1/chat/completions"
+        model = "grok-3-mini"
+    else:
+        url = "https://api.openai.com/v1/chat/completions"
+        model = "gpt-4o-mini"
 
     system = (
         "Ти редактор українського Telegram-каналу ЧІТКО. "
-        "Напиши РІВНО 2 або 4 короткі речення українською. "
+        "Напиши РІВНО 3 або 4 короткі речення українською. "
         "Почни з: «Що це означає:». "
-        "Поясни простими словами, що ця новина означає для звичайної людини в Україні: "
-        "чи її це стосується, що змінилось, чи треба щось робити. "
+        "Поясни простими словами, що ця новина означає для звичайної людини в Україні. "
         "Не вигадуй фактів. Не плутай Росію з Україною. "
-        "Не давай медичних і юридичних порад. Без води і кліше. "
-        "Якщо з тексту нічого зрозумілого для людини немає — відповісь рівно: SKIP"
+        "Якщо пояснити нічого — відповісь рівно: SKIP"
     )
-    user = f"Заголовок: {title}\n\nТекст: {body[:900]}\n\nКатегорія: {category or '—'}"
+    user = f"Заголовок: {title}\n\nТекст: {body[:900]}"
 
     try:
         resp = requests.post(
@@ -655,16 +654,17 @@ def build_live_meaning(title: str, body: str, category: str = "") -> str:
             json={
                 "model": model,
                 "temperature": 0.3,
-                "max_tokens": 120,
+                "max_tokens": 160,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
             },
-            timeout=12,
+            timeout=15,
         )
+        print(f"LLM meaning HTTP {resp.status_code}")
         if resp.status_code != 200:
-            print(f"LLM meaning error: {resp.status_code} {resp.text[:200]}")
+            print(f"LLM meaning body: {resp.text[:300]}")
             return ""
 
         text = (
@@ -674,6 +674,7 @@ def build_live_meaning(title: str, body: str, category: str = "") -> str:
             .get("content", "")
             .strip()
         )
+        print(f"LLM meaning text: {text[:120]}")
         if not text or text.upper().startswith("SKIP"):
             return ""
         if not text.startswith("Що це означає"):
