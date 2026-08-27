@@ -190,6 +190,26 @@ def format_morning_brief_text(rates, fuel, headlines: list) -> str:
     lines += ["", "<b>ЧІТКО. Коротко. По суті.</b>"]
     return "\n".join(lines)
 
+@dp.message(Command("digest"))
+async def cmd_digest(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+    try:
+        await message.answer("Збираю дайджест...")
+        text = await create_evening_digest()
+        cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
+        if os.path.exists(cover):
+            await message.answer_photo(
+                photo=FSInputFile(cover),
+                caption=text,
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"Дайджест упав: {e}")
+        print(f"DIGEST error: {e}")
+
 def render_brief_card(rates: dict, fuel: dict, headlines: list, title_news: str = "ГОЛОВНЕ ЗА РАНОК") -> str:
     from datetime import datetime
     from zoneinfo import ZoneInfo
@@ -350,6 +370,28 @@ async def create_morning_brief():
         print(f"BRIEF news: {e}")
         headlines = []
     return format_morning_brief_text(rates, fuel, headlines)
+
+async def create_evening_digest():
+    rates = get_nbu_rates()
+    fuel = get_fuel_prices()
+    try:
+        headlines = get_top_news_for_brief(8)
+    except Exception:
+        headlines = []
+    return format_evening_digest_text(rates, fuel, headlines)
+
+async def scheduled_digest():
+    text = await create_evening_digest()
+    cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
+    if os.path.exists(cover):
+        await bot.send_photo(
+            CHANNEL_ID,
+            photo=FSInputFile(cover),
+            caption=text,
+            parse_mode="HTML",
+        )
+    else:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     
 # ======================
 # Команда /brief
@@ -444,6 +486,26 @@ async def cmd_news(message: Message):
     await message.answer(
         f"Готово.\nАвто: {auto_published}\nНа апрув: {len(for_approval)}"
     )
+
+@dp.message(Command("digest"))
+async def cmd_digest(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+    try:
+        await message.answer("Збираю дайджест...")
+        text = await create_evening_digest()
+        cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
+        if os.path.exists(cover):
+            await message.answer_photo(
+                photo=FSInputFile(cover),
+                caption=text,
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer(text, parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"Дайджест упав: {e}")
+        print(f"DIGEST error: {e}")
    
 
 @dp.message(Command("digest"))
@@ -834,6 +896,13 @@ async def main():
         scheduled_air,
         "interval",
         seconds=20
+    )
+    scheduler.add_job(
+        scheduled_digest,
+        "cron",
+        hour=22,
+        minute=0,
+        timezone="Europe/Kyiv",
     )
     
     
