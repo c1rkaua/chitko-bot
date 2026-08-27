@@ -77,8 +77,4 @@ def decide_alert_action(current: dict, state: dict) -> dict:
     return {
         "action": "IGNORE",
         "reason": "Статус не змінився.",
-    }cd ~/Desktop/chitko_bot
-git add air_engine.py main.py
-git commit -m "Air alerts for Kyiv and Kyiv oblast"
-git push
-ч
+    }
