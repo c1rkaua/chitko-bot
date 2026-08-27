@@ -296,47 +296,52 @@ def ensure_punctuation(text: str) -> str:
         text += "."
     return text
 
-
-def select_for_publish(news_list: list) -> list:
+def select_for_publish(news_list: list, max_auto: int = 2) -> list:
+    """
+    90–100 breaking: макс 1–2
+    80–89: зазвичай 1
+    65–79: лише якщо сильніших мало
+    <65: не беремо, якщо є хоч щось вище
+    """
     if not news_list:
         return []
 
-    candidates = []
+    clean = []
     for n in news_list:
-        score = n.get("final_score", 0)
-        title = n.get("title_original", "")
-        cat = get_news_category(title)
-        n["category"] = cat
-
-        # Спорт — ніколи в авто
+        score = float(n.get("final_score") or n.get("score") or 0)
+        cat = (n.get("category") or "").lower()
+        title = (n.get("title_original") or n.get("title_chitko") or "").lower()
         if cat == "sport":
             continue
-        # Інше — від 55
-        if cat == "other" and score < 55:
-            continue
-        # Загальний мінімум для авто-кандидатів
-        if score < 55:
-            continue
+        if any(w in title for w in ["захаров", "песков", "soloviev", "соловйов"]):
+            score = min(score, 62)
+            n["final_score"] = score
+        n["_score"] = score
+        clean.append(n)
 
-        candidates.append(n)
+    clean.sort(key=lambda x: x.get("_score", 0), reverse=True)
 
-    if not candidates:
-        return []
+    breaking = [n for n in clean if n["_score"] >= 90]
+    high = [n for n in clean if 80 <= n["_score"] < 90]
+    mid = [n for n in clean if 65 <= n["_score"] < 80]
+    low = [n for n in clean if 50 <= n["_score"] < 65]
 
-    candidates.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+    picked = []
+    picked.extend(breaking[:2])
 
-    # Поки що беремо топ-1 завжди, топ-2 якщо обидві >= 80
-    selected = [candidates[0]]
+    if len(picked) < max_auto:
+        picked.extend(high[:1])
 
-    if len(candidates) > 1:
-        second = candidates[1]
-        if (
-            second.get("final_score", 0) >= 80
-            and candidates[0].get("category") != second.get("category")
-        ):
-            selected.append(second)
+    if len(picked) == 0:
+        picked.extend(mid[:1])
+    elif len(picked) < max_auto and not breaking:
+        picked.extend(mid[:1])
 
-    return selected
+    if len(picked) == 0 and low:
+        # тиха година — максимум 1
+        picked.append(low[0])
+
+    return picked[:max_auto]
 
 def fetch_and_score_news(limit_per_source: int = 8) -> list:
     all_news = []
@@ -785,8 +790,8 @@ TITLE
 Не копіюй заголовок джерела дослівно, якщо його можна сказати простіше.
 
 BODY
-2–4 короткі абзаци українською. Між абзацами порожній рядок.
-Спочатку що сталось. Потім 1–2 деталі. Без води.
+4–5 короткі абзаци українською. Між абзацами порожній рядок.
+Спочатку що сталось. Потім 2–3 деталі. Без води.
 Не повторюй заголовок першим реченням.
 Пиши як розумна людина в месенджері: спокійно, точно, трохи живо.
 Можна «Простіше кажучи», «Тут є нюанс» — лише якщо це природно.
@@ -797,7 +802,7 @@ BODY
 Кожне речення з крапкою.
 
 MEANING
-1 речення, починається з «Що це означає:».
+
 Це відповідь на «і що?», не переказ факту.
 Якщо додавати нічого — напиши рівно: SKIP
 
