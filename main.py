@@ -203,10 +203,24 @@ def render_brief_card(rates: dict, fuel: dict, headlines: list, title_news: str 
     GREEN = (46, 204, 113)
     RED = (231, 76, 60)
     GRAY = (170, 170, 170)
-    LEFT = 90
-    RIGHT = W - 90
+    LEFT, RIGHT = 90, 990
 
     img = Image.new("RGB", (W, H), BG)
+
+    cover_path = os.path.join(os.path.dirname(__file__), "assets", "cover_ranok.jpg")
+    if os.path.exists(cover_path):
+        cover = Image.open(cover_path).convert("RGB")
+        cw, ch = cover.size
+        new_h = int(W * ch / cw)
+        cover = cover.resize((W, new_h))
+        # беремо середню смугу з логотипом
+        top = max(0, (new_h - 420) // 2)
+        band = cover.crop((0, top, W, top + 420))
+        img.paste(band, (0, 0))
+        y0 = 440
+    else:
+        y0 = 80
+
     d = ImageDraw.Draw(img)
 
     def font(size, bold=False):
@@ -221,10 +235,7 @@ def render_brief_card(rates: dict, fuel: dict, headlines: list, title_news: str 
                 return ImageFont.truetype(p, size)
         return ImageFont.load_default()
 
-    f_logo = font(96, True)
-    f_sub = font(26, True)
-    f_date = font(30)
-    f_hello = font(54, True)
+    f_date = font(28)
     f_sec = font(26, True)
     f_label = font(34)
     f_val = font(34, True)
@@ -265,53 +276,47 @@ def render_brief_card(rates: dict, fuel: dict, headlines: list, title_news: str 
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
     date_s = f"{now.day} {months[now.month - 1]} {now.year}"
 
-    y = 80
-    center("ЧІТКО", y, f_logo, WHITE)
-    y = 190
-    d.line((380, y, W - 380, y), fill=GOLD, width=3)
-    center("ЧІТКО MORNING BRIEF", y + 22, f_sub, GOLD)
-    center(date_s, y + 62, f_date, GRAY)
-    center("Доброго ранку", y + 118, f_hello, WHITE)
-    gold_line(y + 200)
+    y = y0
+    center(date_s, y, f_date, GRAY)
+    gold_line(y + 50)
 
-    y = 430
+    y += 90
     center("КУРС ВАЛЮТ (НБУ)", y, f_sec, GOLD)
-    y += 60
+    y += 55
 
     def row(label, value, delta, yy):
         d.text((LEFT, yy), label, font=f_label, fill=WHITE)
         val = fmt_uah(value) + " ₴"
         vw, _ = tw(val, f_val)
-        arrow_x = RIGHT - 40
-        val_x = arrow_x - 70 - vw
-        d.text((val_x, yy), val, font=f_val, fill=GOLD)
+        arrow_x = RIGHT - 20
+        d.text((arrow_x - 70 - vw, yy), val, font=f_val, fill=GOLD)
         if delta is None:
             return
         color = GREEN if delta > 0 else (RED if delta < 0 else GRAY)
         arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
-        d.text((arrow_x - 20, yy), arrow, font=f_val, fill=color)
+        d.text((arrow_x - 24, yy), arrow, font=f_val, fill=color)
 
     row("USD / UAH", rates.get("usd"), rates.get("usd_delta"), y)
     row("EUR / UAH", rates.get("eur"), rates.get("eur_delta"), y + 58)
     row("PLN / UAH", rates.get("pln"), rates.get("pln_delta"), y + 116)
 
-    y = 700
+    y += 200
     gold_line(y)
-    center("ПАЛИВО (середні ціни по АЗС)", y + 30, f_sec, GOLD)
+    center("ПАЛИВО (середні ціни по АЗС)", y + 28, f_sec, GOLD)
     y += 90
     row("A-95", fuel.get("a95"), None, y)
     row("ДП", fuel.get("dp"), None, y + 58)
     row("Автогаз", fuel.get("lpg"), None, y + 116)
 
-    y = 1020
+    y += 210
     gold_line(y)
-    center(title_news, y + 30, f_sec, GOLD)
+    center(title_news, y + 28, f_sec, GOLD)
     y += 95
 
     for i, h in enumerate(headlines[:3], 1):
         t = (h.get("title_chitko") or h.get("title_original") or "").strip().rstrip(".")
         d.ellipse((LEFT, y + 2, LEFT + 44, y + 46), outline=GOLD, width=2)
-        nw, nh = tw(str(i), f_num)
+        nw, _ = tw(str(i), f_num)
         d.text((LEFT + 22 - nw // 2, y + 6), str(i), font=f_num, fill=GOLD)
         lines = wrap(t, f_news, RIGHT - (LEFT + 70))
         ly = y
