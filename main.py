@@ -196,107 +196,135 @@ def render_brief_card(rates: dict, fuel: dict, headlines: list, title_news: str 
     from PIL import Image, ImageDraw, ImageFont
     import os
 
-    W, H = 1080, 1620
+    W, H = 1080, 1920
     BG = (0, 0, 0)
     GOLD = (201, 162, 39)
     WHITE = (255, 255, 255)
     GREEN = (46, 204, 113)
     RED = (231, 76, 60)
-    GRAY = (180, 180, 180)
+    GRAY = (170, 170, 170)
+    LEFT = 90
+    RIGHT = W - 90
 
     img = Image.new("RGB", (W, H), BG)
     d = ImageDraw.Draw(img)
 
     def font(size, bold=False):
         paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold else "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold
+            else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold
+            else "/System/Library/Fonts/Supplemental/Arial.ttf",
         ]
         for p in paths:
             if os.path.exists(p):
                 return ImageFont.truetype(p, size)
         return ImageFont.load_default()
 
-    f_logo = font(92, True)
-    f_sub = font(28, True)
-    f_date = font(32)
-    f_hello = font(52, True)
-    f_sec = font(28, True)
-    f_row = font(36)
-    f_row_b = font(36, True)
-    f_news_t = font(34, True)
-    f_news = font(28)
+    f_logo = font(96, True)
+    f_sub = font(26, True)
+    f_date = font(30)
+    f_hello = font(54, True)
+    f_sec = font(26, True)
+    f_label = font(34)
+    f_val = font(34, True)
+    f_news = font(30)
     f_foot = font(24)
+    f_num = font(28, True)
+
+    def tw(text, fnt):
+        b = d.textbbox((0, 0), text, font=fnt)
+        return b[2] - b[0], b[3] - b[1]
 
     def center(text, y, fnt, fill=WHITE):
-        box = d.textbbox((0, 0), text, font=fnt)
-        x = (W - (box[2] - box[0])) // 2
-        d.text((x, y), text, font=fnt, fill=fill)
+        w, _ = tw(text, fnt)
+        d.text(((W - w) // 2, y), text, font=fnt, fill=fill)
 
-    def line(y):
-        d.line((120, y, W - 120, y), fill=GOLD, width=2)
+    def wrap(text, fnt, max_w):
+        words = text.split()
+        lines, cur = [], ""
+        for w in words:
+            test = (cur + " " + w).strip()
+            if tw(test, fnt)[0] <= max_w:
+                cur = test
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines[:3]
 
+    def gold_line(y):
+        d.line((LEFT + 40, y, RIGHT - 40, y), fill=GOLD, width=2)
+
+    months = [
+        "січня", "лютого", "березня", "квітня", "травня", "червня",
+        "липня", "серпня", "вересня", "жовтня", "листопада", "грудня",
+    ]
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
-    days = ["понеділок", "вівторок", "середа", "четвер", "п’ятниця", "субота", "неділя"]
-    date_s = f"{now.day} {['січня','лютого','березня','квітня','травня','червня','липня','серпня','вересня','жовтня','листопада','грудня'][now.month-1]} {now.year}"
+    date_s = f"{now.day} {months[now.month - 1]} {now.year}"
 
-    y = 70
+    y = 80
     center("ЧІТКО", y, f_logo, WHITE)
-    y = 175
-    d.line((360, y, W - 360, y), fill=GOLD, width=3)
-    center("ЧІТКО MORNING BRIEF", y + 20, f_sub, GOLD)
-    center(date_s, y + 60, f_date, GRAY)
-    center("Доброго ранку", y + 120, f_hello, WHITE)
-    line(y + 200)
+    y = 190
+    d.line((380, y, W - 380, y), fill=GOLD, width=3)
+    center("ЧІТКО MORNING BRIEF", y + 22, f_sub, GOLD)
+    center(date_s, y + 62, f_date, GRAY)
+    center("Доброго ранку", y + 118, f_hello, WHITE)
+    gold_line(y + 200)
 
     y = 430
     center("КУРС ВАЛЮТ (НБУ)", y, f_sec, GOLD)
-    y += 55
+    y += 60
 
-    def money_row(label, value, delta, yy):
-        d.text((120, yy), label, font=f_row, fill=WHITE)
+    def row(label, value, delta, yy):
+        d.text((LEFT, yy), label, font=f_label, fill=WHITE)
         val = fmt_uah(value) + " ₴"
-        box = d.textbbox((0, 0), val, font=f_row_b)
-        d.text((W - 280 - (box[2] - box[0]), yy), val, font=f_row_b, fill=GOLD)
+        vw, _ = tw(val, f_val)
+        arrow_x = RIGHT - 40
+        val_x = arrow_x - 70 - vw
+        d.text((val_x, yy), val, font=f_val, fill=GOLD)
         if delta is None:
             return
         color = GREEN if delta > 0 else (RED if delta < 0 else GRAY)
         arrow = "↑" if delta > 0 else ("↓" if delta < 0 else "→")
-        d.text((W - 160, yy), arrow, font=f_row_b, fill=color)
+        d.text((arrow_x - 20, yy), arrow, font=f_val, fill=color)
 
-    money_row("USD/UAH", rates.get("usd"), rates.get("usd_delta"), y)
-    money_row("EUR/UAH", rates.get("eur"), rates.get("eur_delta"), y + 55)
-    money_row("PLN/UAH", rates.get("pln"), rates.get("pln_delta"), y + 110)
+    row("USD / UAH", rates.get("usd"), rates.get("usd_delta"), y)
+    row("EUR / UAH", rates.get("eur"), rates.get("eur_delta"), y + 58)
+    row("PLN / UAH", rates.get("pln"), rates.get("pln_delta"), y + 116)
 
-    y = 720
-    line(y)
-    center("ПАЛИВО (середні ціни по АЗС)", y + 25, f_sec, GOLD)
-    y += 80
-    money_row("A-95", fuel.get("a95"), None, y)
-    money_row("ДП", fuel.get("dp"), None, y + 55)
-    money_row("Автогаз", fuel.get("lpg"), None, y + 110)
-
-    y = 1040
-    line(y)
-    center(title_news, y + 25, f_sec, GOLD)
+    y = 700
+    gold_line(y)
+    center("ПАЛИВО (середні ціни по АЗС)", y + 30, f_sec, GOLD)
     y += 90
+    row("A-95", fuel.get("a95"), None, y)
+    row("ДП", fuel.get("dp"), None, y + 58)
+    row("Автогаз", fuel.get("lpg"), None, y + 116)
+
+    y = 1020
+    gold_line(y)
+    center(title_news, y + 30, f_sec, GOLD)
+    y += 95
 
     for i, h in enumerate(headlines[:3], 1):
-        t = (h.get("title_chitko") or h.get("title_original") or "").strip()
-        t = t.rstrip(".")
-        if len(t) > 90:
-            t = t[:87] + "…"
-        d.ellipse((120, y + 6, 162, y + 48), outline=GOLD, width=2)
-        tw = d.textbbox((0, 0), str(i), font=f_news_t)
-        d.text((141 - (tw[2] - tw[0]) // 2, y + 10), str(i), font=f_news_t, fill=GOLD)
-        d.text((185, y + 8), t, font=f_news, fill=WHITE)
-        y += 90
+        t = (h.get("title_chitko") or h.get("title_original") or "").strip().rstrip(".")
+        d.ellipse((LEFT, y + 2, LEFT + 44, y + 46), outline=GOLD, width=2)
+        nw, nh = tw(str(i), f_num)
+        d.text((LEFT + 22 - nw // 2, y + 6), str(i), font=f_num, fill=GOLD)
+        lines = wrap(t, f_news, RIGHT - (LEFT + 70))
+        ly = y
+        for line in lines:
+            d.text((LEFT + 64, ly + 6), line, font=f_news, fill=WHITE)
+            ly += 38
+        y = ly + 28
 
-    line(H - 110)
-    center("ЧІТКО. КОРОТКО. ПО СУТІ.", H - 80, f_foot, GRAY)
+    gold_line(H - 120)
+    center("ЧІТКО. КОРОТКО. ПО СУТІ.", H - 85, f_foot, GRAY)
 
     path = "/tmp/chitko_brief.jpg"
-    img.save(path, "JPEG", quality=92)
+    img.save(path, "JPEG", quality=93)
     return path
 
 async def create_morning_brief():
