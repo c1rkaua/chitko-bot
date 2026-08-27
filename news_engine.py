@@ -617,6 +617,76 @@ def build_what_it_means(title: str, category: str) -> str:
 
     return ""
 
+def build_live_meaning(title: str, body: str, category: str = "") -> str:
+    import os
+    import requests
+
+    api_key = os.getenv("XAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return ""
+
+    use_xai = bool(os.getenv("XAI_API_KEY"))
+    url = (
+        "https://api.x.ai/v1/chat/completions"
+        if use_xai
+        else "https://api.openai.com/v1/chat/completions"
+    )
+    model = "grok-2-latest" if use_xai else "gpt-4o-mini"
+
+    system = (
+        "Ти редактор українського Telegram-каналу ЧІТКО. "
+        "Напиши РІВНО 2 або 4 короткі речення українською. "
+        "Почни з: «Що це означає:». "
+        "Поясни простими словами, що ця новина означає для звичайної людини в Україні: "
+        "чи її це стосується, що змінилось, чи треба щось робити. "
+        "Не вигадуй фактів. Не плутай Росію з Україною. "
+        "Не давай медичних і юридичних порад. Без води і кліше. "
+        "Якщо з тексту нічого зрозумілого для людини немає — відповісь рівно: SKIP"
+    )
+    user = f"Заголовок: {title}\n\nТекст: {body[:900]}\n\nКатегорія: {category or '—'}"
+
+    try:
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "temperature": 0.3,
+                "max_tokens": 120,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            },
+            timeout=12,
+        )
+        if resp.status_code != 200:
+            print(f"LLM meaning error: {resp.status_code} {resp.text[:200]}")
+            return ""
+
+        text = (
+            resp.json()
+            .get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+        if not text or text.upper().startswith("SKIP"):
+            return ""
+        if not text.startswith("Що це означає"):
+            text = "Що це означає: " + text
+        parts = [p.strip() for p in text.replace("!", ".").split(".") if p.strip()]
+        text = ". ".join(parts[:2]).strip()
+        if text and not text.endswith("."):
+            text += "."
+        return text
+    except Exception as e:
+        print(f"LLM meaning exception: {e}")
+        return ""
+
 def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()
@@ -672,7 +742,13 @@ def format_news_post(news: dict) -> str:
     else:
         body = "Деталі уточнюються."
 
-    post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
+    category = news.get("category") or get_news_category(title)
+    meaning = build_live_meaning(title, body, category)
+
+    if meaning:
+        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n{meaning}\n\n<b>ЧІТКО</b>"
+    else:
+        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
 
     if len(post) > 1000:
         cut = post[:960]
@@ -683,15 +759,6 @@ def format_news_post(news: dict) -> str:
             post = cut.rsplit(" ", 1)[0] + "…\n\n<b>ЧІТКО</b>"
 
     return post
-
-    # Емодзі
-    title_lower = title.lower()
-    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
-        emoji = "⚡️"
-    elif any(w in title_lower for w in ["тцк", "мобілізац", "повістк", "бусифікац", "рейд"]):
-        emoji = "⚠️"
-    elif any(w in title_lower for w in ["загибл", "поранен", "загинув", "загинула"]):
-        emoji = "🕯"
 
 
 if __name__ == "__main__":
