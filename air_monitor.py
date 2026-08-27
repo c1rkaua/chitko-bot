@@ -1,4 +1,4 @@
-это import json
+import json
 import os
 import requests
 
