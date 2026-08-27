@@ -174,182 +174,222 @@ def fetch_official_alerts() -> dict:
     print(f"AIR status kyiv={result['kyiv']} oblast={result['oblast']}")
     return result
 
-def decide_alert_action(current: dict, state: dict) -> dict:
-    kyiv_was = state.get("kyiv_alert", False)
-    obl_was = state.get("oblast_alert", False)
-    kyiv_now = current.get("kyiv", False)
-    obl_now = current.get("oblast", False)
-    kyiv_dur = _fmt_duration(state.get("kyiv_since") or 0)
-    obl_dur = _fmt_duration(state.get("oblast_since") or 0)
-    repeat = _minutes_since_end(state) <= 90
+def decide_alert_action(state: dict, kyiv_now: bool, oblast_now: bool) -> dict:
+    import random
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    def with_dur(text: str, extra: str = "") -> str:
-        if extra:
-            return text + "\n\n" + extra
-        return text
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    kyiv_was = bool(state.get("kyiv_alert"))
+    oblast_was = bool(state.get("oblast_alert"))
+    initialized = bool(state.get("initialized"))
 
-    if (not kyiv_now) and obl_now and not state.get("kyiv_end_sent"):
-        extra = f"У Києві тривога тривала {kyiv_dur}." if kyiv_dur else ""
+    def minutes_since_end():
+        raw = state.get("last_end_at")
+        if not raw:
+            return 9999
+        try:
+            end = datetime.fromisoformat(str(raw))
+            return (now - end).total_seconds() / 60
+        except Exception:
+            return 9999
+
+    is_repeat = minutes_since_end() <= 90
+
+    if not initialized:
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END_KYIV",
-            "title": "🟢 Відбій у Києві",
-            "text": with_dur(random.choice(KYIV_OFF_OBLAST_ON), extra),
-            "reason": "Відбій у Києві, область ще під сиреною.",
+            "action": "IGNORE",
+            "text": "",
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
         }
 
-    if (not obl_now) and kyiv_now and not state.get("oblast_end_sent"):
-        extra = f"В області тривога тривала {obl_dur}." if obl_dur else ""
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END_OBLAST",
-            "title": "🟢 Відбій у Київській області",
-            "text": with_dur(random.choice(OBLAST_OFF_KYIV_ON), extra),
-            "reason": "Відбій в області, Київ ще під сиреною.",
-        }
+    started_kyiv = kyiv_now and not kyiv_was
+    started_oblast = oblast_now and not oblast_was
+    ended_kyiv = (not kyiv_now) and kyiv_was
+    ended_oblast = (not oblast_now) and oblast_was
 
-    if (kyiv_was or obl_was) and (not kyiv_now) and (not obl_now):
-        bits = []
-        if kyiv_dur:
-            bits.append(f"Київ — {kyiv_dur}.")
-        if obl_dur:
-            bits.append(f"Область — {obl_dur}.")
-        pool = BOTH_CLEAR_NIGHT if _is_night() else BOTH_CLEAR_DAY
+    if started_kyiv or started_oblast:
+        kind = "repeat" if is_repeat else "start"
+        closer = random.choice(REPEAT_ALERT) if kind == "repeat" else ""
+        text = build_alert_start_text(
+            kind=kind,
+            kyiv=kyiv_now,
+            oblast=oblast_now,
+            closer=closer,
+        )
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END",
-            "title": "🟢 Відбій повітряної тривоги",
-            "text": with_dur(random.choice(pool), " ".join(bits)),
-            "reason": "Повний відбій.",
-        }
-
-    if kyiv_now and not kyiv_was:
-        if repeat:
-            where = "в Києві та Київській області" if obl_now else "в Києві"
-            text = (
-                f"{random.choice(REPEAT_ALERT)}\n\n"
-                f"Повторна повітряна тривога {where}.\n"
-                "Пройдіть в укриття."
-            )
-            title = "🚨 Повторна повітряна тривога"
-        elif obl_now:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Києві та Київській області.\n\nПройдіть в укриття."
-        else:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Києві.\n\nПройдіть в укриття."
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_START",
-            "title": title,
+            "action": "start",
             "text": text,
-            "reason": "Старт по Києву.",
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
         }
 
-    if obl_now and not obl_was and not kyiv_now:
-        if repeat:
-            text = (
-                f"{random.choice(REPEAT_ALERT)}\n\n"
-                "Повторна повітряна тривога в Київській області.\n"
-                "Стежимо за Києвом."
-            )
-            title = "🚨 Повторна повітряна тривога"
-        else:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Київській області.\n\nСтежимо за Києвом."
+    if ended_kyiv and oblast_now:
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_START",
-            "title": title,
-            "text": text,
-            "reason": "Старт по області.",
+            "action": "kyiv_off",
+            "text": random.choice(KYIV_OFF_OBLAST_ON),
+            "kyiv": False,
+            "oblast": True,
+            "initialized": True,
         }
 
-    if kyiv_now and not kyiv_was and obl_was:
+    if ended_oblast and kyiv_now:
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_UPDATE",
-            "title": "⚠️ Оновлення щодо повітряної загрози",
-            "text": "Тривогу оголошено також у Києві.\n\nПройдіть в укриття.",
-            "reason": "Київ підключився.",
+            "action": "oblast_off",
+            "text": random.choice(OBLAST_OFF_KYIV_ON),
+            "kyiv": True,
+            "oblast": False,
+            "initialized": True,
         }
 
-    return {"action": "IGNORE", "reason": "Статус не змінився."}
+    if (ended_kyiv or ended_oblast) and (not kyiv_now) and (not oblast_now):
+        hour = now.hour
+        pool = BOTH_CLEAR_NIGHT if hour >= 22 or hour < 6 else BOTH_CLEAR_DAY
+        return {
+            "action": "all_clear",
+            "text": random.choice(pool),
+            "kyiv": False,
+            "oblast": False,
+            "initialized": True,
+            "last_end_at": now.isoformat(),
+        }
+
+    return {
+        "action": "IGNORE",
+        "text": "",
+        "kyiv": kyiv_now,
+        "oblast": oblast_now,
+        "initialized": True,
+    }
 
 def format_air_post(decision: dict) -> str:
     title = decision.get("title", "").strip()
     text = decision.get("text", "").strip()
     return f"<b>{title}</b>\n\n{text}\n\n<b>ЧІТКО</b>"
 
+def build_alert_start_text(kind: str, kyiv: bool, oblast: bool, closer: str = "") -> str:
+    if kyiv and oblast:
+        where = "у Києві та Київській області"
+    elif kyiv:
+        where = "у Києві"
+    else:
+        where = "у Київській області"
 
-def process_air_cycle() -> dict:
-    state = load_state()
-    current = fetch_official_alerts()
+    if kind == "repeat":
+        line = (closer or "").strip() or "Повторна тривога. Короткий антракт закінчився."
+        return (
+            f"🚨 <b>Повторна повітряна тривога</b>\n\n"
+            f"{line}\n\n"
+            f"Пройдіть в укриття."
+        )
 
-    if not state.get("initialized"):
-        now_ts = time.time()
-        state["kyiv_alert"] = current.get("kyiv", False)
-        state["oblast_alert"] = current.get("oblast", False)
-        state["initialized"] = True
-        state["last_post_at"] = 0
-        state["last_event"] = ""
-        if current.get("kyiv"):
-            state["kyiv_since"] = now_ts
-        if current.get("oblast"):
-            state["oblast_since"] = now_ts
-        save_state(state)
+    return (
+        f"🚨 <b>Повітряна тривога</b>\n\n"
+        f"Оголошена {where}.\n\n"
+        f"Пройдіть в укриття."
+    )
+
+def decide_alert_action(a, b=None, oblast_now=None) -> dict:
+    import random
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # старий виклик: decide_alert_action(current, state)
+    if isinstance(a, dict) and isinstance(b, dict) and oblast_now is None:
+        current = a
+        state = b
+        kyiv_now = bool(current.get("kyiv") or current.get("kyiv_alert") or current.get("kyiv_on"))
+        oblast_now = bool(current.get("oblast") or current.get("oblast_alert") or current.get("oblast_on"))
+    else:
+        state = a
+        kyiv_now = bool(b)
+        oblast_now = bool(oblast_now)
+
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    kyiv_was = bool(state.get("kyiv_alert"))
+    oblast_was = bool(state.get("oblast_alert"))
+    initialized = bool(state.get("initialized"))
+
+    def minutes_since_end():
+        raw = state.get("last_end_at")
+        if not raw:
+            return 9999
+        try:
+            end = datetime.fromisoformat(str(raw))
+            return (now - end).total_seconds() / 60
+        except Exception:
+            return 9999
+
+    is_repeat = minutes_since_end() <= 90
+
+    if not initialized:
         return {
             "action": "IGNORE",
-            "reason": "Старт бота: стан записано, без публікації.",
-            "current": current,
+            "text": "",
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
         }
 
-    decision = decide_alert_action(current, state)
-    now_ts = time.time()
+    started_kyiv = kyiv_now and not kyiv_was
+    started_oblast = oblast_now and not oblast_was
+    ended_kyiv = (not kyiv_now) and kyiv_was
+    ended_oblast = (not oblast_now) and oblast_was
 
-    if decision.get("action") == "PUBLISH":
-        last_event = state.get("last_event", "")
-        if (
-            decision.get("event_type") == last_event
-            and now_ts - state.get("last_post_at", 0) < 20
-        ):
-            decision = {"action": "IGNORE", "reason": "Антиспам 20с."}
-        else:
-            state["last_post_at"] = now_ts
-            state["last_event"] = decision.get("event_type", "")
+    if started_kyiv or started_oblast:
+        kind = "repeat" if is_repeat else "start"
+        closer = random.choice(REPEAT_ALERT) if kind == "repeat" else ""
+        text = build_alert_start_text(
+            kind=kind,
+            kyiv=kyiv_now,
+            oblast=oblast_now,
+            closer=closer,
+        )
+        return {
+            "action": "start",
+            "text": text,
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
+        }
 
-    if current.get("kyiv") and not state.get("kyiv_since"):
-        state["kyiv_since"] = now_ts
-    if not current.get("kyiv"):
-        state["kyiv_since"] = 0
+    if ended_kyiv and oblast_now:
+        return {
+            "action": "kyiv_off",
+            "text": random.choice(KYIV_OFF_OBLAST_ON),
+            "kyiv": False,
+            "oblast": True,
+            "initialized": True,
+        }
 
-    if current.get("oblast") and not state.get("oblast_since"):
-        state["oblast_since"] = now_ts
-    if not current.get("oblast"):
-        state["oblast_since"] = 0
+    if ended_oblast and kyiv_now:
+        return {
+            "action": "oblast_off",
+            "text": random.choice(OBLAST_OFF_KYIV_ON),
+            "kyiv": True,
+            "oblast": False,
+            "initialized": True,
+        }
 
-    et = decision.get("event_type", "")
-    if et == "ALERT_END_KYIV":
-        state["kyiv_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et == "ALERT_END_OBLAST":
-        state["oblast_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et == "ALERT_END":
-        state["kyiv_end_sent"] = True
-        state["oblast_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et in ("ALERT_START", "ALERT_UPDATE"):
-        if current.get("kyiv"):
-            state["kyiv_end_sent"] = False
-        if current.get("oblast"):
-            state["oblast_end_sent"] = False
+    if (ended_kyiv or ended_oblast) and (not kyiv_now) and (not oblast_now):
+        hour = now.hour
+        pool = BOTH_CLEAR_NIGHT if hour >= 22 or hour < 6 else BOTH_CLEAR_DAY
+        return {
+            "action": "all_clear",
+            "text": random.choice(pool),
+            "kyiv": False,
+            "oblast": False,
+            "initialized": True,
+            "last_end_at": now.isoformat(),
+        }
 
-    state["kyiv_alert"] = current.get("kyiv", False)
-    state["oblast_alert"] = current.get("oblast", False)
-    state["initialized"] = True
-    save_state(state)
-
-    decision["current"] = current
-    return decision
-        
+    return {
+        "action": "IGNORE",
+        "text": "",
+        "kyiv": kyiv_now,
+        "oblast": oblast_now,
+        "initialized": True,
+    }
