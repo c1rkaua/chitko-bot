@@ -112,49 +112,40 @@ def get_fuel_prices() -> dict:
     def to_float(s):
         return float(s.replace(",", ".").replace(" ", ""))
 
-    # 1. НафтоРинок — середні по мережах
     try:
         html = requests.get(
             "https://www.nefterynok.info/fuel-lpg",
             headers=headers,
             timeout=6,
         ).text
-        m95 = re.search(r"Бензин А-95.{0,80}?(\d+[.,]\d{2})", html, re.I | re.S)
-        mdp = re.search(r"Дизельн\w*\s+пальн\w*.{0,80}?(\d+[.,]\d{2})", html, re.I | re.S)
-        mlpg = re.search(r"Автогаз.{0,80}?(\d+[.,]\d{2})", html, re.I | re.S)
-        if m95:
-            out["a95"] = to_float(m95.group(1))
-        if mdp:
-            out["dp"] = to_float(mdp.group(1))
-        if mlpg:
-            out["lpg"] = to_float(mlpg.group(1))
-        print(f"FUEL nefterynok: {out}")
     except Exception as e:
-        print(f"FUEL nefterynok error: {e}")
-
-    if out["a95"] and out["dp"]:
+        print(f"FUEL fetch error: {e}")
         return out
 
-    # 2. Мінфін — сторінка середніх, не tm/
-    try:
-        html = requests.get(
-            "https://index.minfin.com.ua/ua/markets/fuel/",
-            headers=headers,
-            timeout=6,
-        ).text
-        m95 = re.search(r"А-95(?!\+).{0,120}?(\d+[.,]\d{2})", html, re.I | re.S)
-        mdp = re.search(r"(?:Дизель|ДП).{0,120}?(\d+[.,]\d{2})", html, re.I | re.S)
-        mlpg = re.search(r"(?:Автогаз|Газ).{0,120}?(\d+[.,]\d{2})", html, re.I | re.S)
-        if not out["a95"] and m95:
-            out["a95"] = to_float(m95.group(1))
-        if not out["dp"] and mdp:
-            out["dp"] = to_float(mdp.group(1))
-        if not out["lpg"] and mlpg:
-            out["lpg"] = to_float(mlpg.group(1))
-        print(f"FUEL minfin: {out}")
-    except Exception as e:
-        print(f"FUEL minfin error: {e}")
+    m95 = re.search(
+        r"Бензин А-95(?!\+)\s*(?:\*\*)?\s*(\d+[.,]\d{2})\s*грн",
+        html,
+        re.I,
+    )
+    mdp = re.search(
+        r"Дизель(?:не пальне)?\s*(?:\*\*)?\s*(\d+[.,]\d{2})\s*грн",
+        html,
+        re.I,
+    )
+    mlpg = re.search(
+        r"Автогаз(?:\s*\(LPG\))?\s*(?:\*\*)?\s*(\d+[.,]\d{2})\s*грн",
+        html,
+        re.I,
+    )
 
+    if m95:
+        out["a95"] = to_float(m95.group(1))
+    if mdp:
+        out["dp"] = to_float(mdp.group(1))
+    if mlpg:
+        out["lpg"] = to_float(mlpg.group(1))
+
+    print(f"FUEL parsed: {out}")
     return out
 # ======================
 # Формування бріфу
