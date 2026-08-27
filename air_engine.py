@@ -196,10 +196,9 @@ def decide_alert_action(state: dict, kyiv_now: bool, oblast_now: bool) -> dict:
 
     is_repeat = minutes_since_end() <= 90
 
-    # перший запуск після рестарту — тільки записати стан
     if not initialized:
         return {
-            "action": "warmup",
+            "action": "IGNORE",
             "text": "",
             "kyiv": kyiv_now,
             "oblast": oblast_now,
@@ -211,7 +210,6 @@ def decide_alert_action(state: dict, kyiv_now: bool, oblast_now: bool) -> dict:
     ended_kyiv = (not kyiv_now) and kyiv_was
     ended_oblast = (not oblast_now) and oblast_was
 
-    # СТАРТ / ПОВТОР
     if started_kyiv or started_oblast:
         kind = "repeat" if is_repeat else "start"
         closer = random.choice(REPEAT_ALERT) if kind == "repeat" else ""
@@ -229,51 +227,43 @@ def decide_alert_action(state: dict, kyiv_now: bool, oblast_now: bool) -> dict:
             "initialized": True,
         }
 
-    # ВІДБІЙ: Київ ні, область ще так
     if ended_kyiv and oblast_now:
-        text = random.choice(KYIV_OFF_OBLAST_ON)
         return {
             "action": "kyiv_off",
-            "text": text,
+            "text": random.choice(KYIV_OFF_OBLAST_ON),
             "kyiv": False,
             "oblast": True,
             "initialized": True,
         }
 
-    # ВІДБІЙ: область ні, Київ ще так
     if ended_oblast and kyiv_now:
-        text = random.choice(OBLAST_OFF_KYIV_ON)
         return {
             "action": "oblast_off",
-            "text": text,
+            "text": random.choice(OBLAST_OFF_KYIV_ON),
             "kyiv": True,
             "oblast": False,
             "initialized": True,
         }
 
-    # ВІДБІЙ ОБОХ
-    if ended_kyiv or ended_oblast:
-        if not kyiv_now and not oblast_now:
-            hour = now.hour
-            pool = BOTH_CLEAR_NIGHT if hour >= 22 or hour < 6 else BOTH_CLEAR_DAY
-            text = random.choice(pool)
-            return {
-                "action": "all_clear",
-                "text": text,
-                "kyiv": False,
-                "oblast": False,
-                "initialized": True,
-                "last_end_at": now.isoformat(),
-            }
+    if (ended_kyiv or ended_oblast) and (not kyiv_now) and (not oblast_now):
+        hour = now.hour
+        pool = BOTH_CLEAR_NIGHT if hour >= 22 or hour < 6 else BOTH_CLEAR_DAY
+        return {
+            "action": "all_clear",
+            "text": random.choice(pool),
+            "kyiv": False,
+            "oblast": False,
+            "initialized": True,
+            "last_end_at": now.isoformat(),
+        }
 
     return {
-        "action": "none",
+        "action": "IGNORE",
         "text": "",
         "kyiv": kyiv_now,
         "oblast": oblast_now,
         "initialized": True,
     }
-
 
 def format_air_post(decision: dict) -> str:
     title = decision.get("title", "").strip()
