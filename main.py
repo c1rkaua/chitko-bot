@@ -111,42 +111,67 @@ def get_fuel_prices() -> dict:
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ChitkoBot"}
 
     def to_float(s):
-        return float(s.replace(",", ".").replace(" ", ""))
+        return float(str(s).replace(",", ".").replace(" ", ""))
 
+    def ok(key, val):
+        if val is None:
+            return False
+        ranges = {"a95": (60, 110), "dp": (60, 130), "lpg": (30, 70)}
+        lo, hi = ranges[key]
+        return lo <= val <= hi
+
+    def grab(html, label):
+        m = re.search(
+            label + r".{0,180}?(\d{2}[.,]\d{2})",
+            html,
+            re.I | re.S,
+        )
+        return to_float(m.group(1)) if m else None
+
+    # 1. Мінфін — середні по країні
     try:
         html = requests.get(
-            "https://www.nefterynok.info/fuel-lpg",
+            "https://index.minfin.com.ua/ua/markets/fuel/",
             headers=headers,
-            timeout=6,
+            timeout=8,
         ).text
+        a95 = grab(html, r"Бензин А-95(?!\s*преміум)")
+        dp = grab(html, r"Дизельне палив")
+        lpg = grab(html, r"Газ авто")
+        if ok("a95", a95):
+            out["a95"] = a95
+        if ok("dp", dp):
+            out["dp"] = dp
+        if ok("lpg", lpg):
+            out["lpg"] = lpg
+        print(f"FUEL minfin: {out}")
     except Exception as e:
-        print(f"FUEL fetch error: {e}")
-        return out
+        print(f"FUEL minfin error: {e}")
 
-    m95 = re.search(
-        r"Бензин А-95(?!\+)\s*(?:\*\*)?\s*(\d+[.,]\d{2})\s*грн",
-        html,
-        re.I,
-    )
-    mdp = re.search(
-        r"Дизель(?:не пальне)?\s*(?:\*\*)?\s*(\d+[.,]\d{2})\s*грн",
-        html,
-        re.I,
-    )
-    mlpg = re.search(
-        r"Автогаз(?:\s*\(LPG\))?\s*(?:\*\*)?\s*(\d+[.,]\d{2})\s*грн",
-        html,
-        re.I,
-    )
+    # 2. НафтоРинок — запас
+    if not (out["a95"] and out["dp"] and out["lpg"]):
+        try:
+            html = requests.get(
+                "https://www.nefterynok.info/fuel-lpg",
+                headers=headers,
+                timeout=8,
+            ).text
+            if not out["a95"]:
+                m = re.search(r"Бензин А-95\s*\|\s*\*\*(\d+[.,]\d{2})\s*грн", html, re.I)
+                if m and ok("a95", to_float(m.group(1))):
+                    out["a95"] = to_float(m.group(1))
+            if not out["dp"]:
+                m = re.search(r"Дизельне пальне\s*\|\s*\*\*(\d+[.,]\d{2})\s*грн", html, re.I)
+                if m and ok("dp", to_float(m.group(1))):
+                    out["dp"] = to_float(m.group(1))
+            if not out["lpg"]:
+                m = re.search(r"Автогаз \(LPG\)\s*\|\s*\*\*(\d+[.,]\d{2})\s*грн", html, re.I)
+                if m and ok("lpg", to_float(m.group(1))):
+                    out["lpg"] = to_float(m.group(1))
+            print(f"FUEL nefterynok: {out}")
+        except Exception as e:
+            print(f"FUEL nefterynok error: {e}")
 
-    if m95:
-        out["a95"] = to_float(m95.group(1))
-    if mdp:
-        out["dp"] = to_float(mdp.group(1))
-    if mlpg:
-        out["lpg"] = to_float(mlpg.group(1))
-
-    print(f"FUEL parsed: {out}")
     return out
 # ======================
 # Формування бріфу
