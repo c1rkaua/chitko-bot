@@ -451,15 +451,20 @@ async def cmd_air(message: Message):
         return
     try:
         from air_engine import process_air_cycle
-        result = await process_air_cycle()
+        result = process_air_cycle()
         if not isinstance(result, dict):
             await message.answer(str(result))
             return
+        kyiv = result.get("kyiv")
+        oblast = result.get("oblast")
+        if kyiv is None and isinstance(result.get("current"), dict):
+            kyiv = result["current"].get("kyiv")
+            oblast = result["current"].get("oblast")
         await message.answer(
-            f"Київ: {'тривога' if result.get('kyiv') else 'тихо'}\n"
-            f"Область: {'тривога' if result.get('oblast') else 'тихо'}\n"
+            f"Київ: {'тривога' if kyiv else 'тихо'}\n"
+            f"Область: {'тривога' if oblast else 'тихо'}\n"
             f"Action: {result.get('action')}\n"
-            f"{result.get('text') or 'Статус не змінився.'}"
+            f"{(result.get('text') or 'Статус не змінився.')}"
         )
     except Exception as e:
         await message.answer(f"/air упав: {type(e).__name__}: {e}")
