@@ -172,10 +172,44 @@ def get_fuel_prices() -> dict:
         except Exception as e:
             print(f"FUEL nefterynok error: {e}")
 
-    return out
+    return outdef format_evening_digest_text
 # ======================
 # Формування бріфу
 # ======================
+def format_morning_brief_text(rates, fuel, headlines: list) -> str:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    days = [
+        "понеділок", "вівторок", "середа", "четвер",
+        "п’ятниця", "субота", "неділя",
+    ]
+    date_line = f"{now.strftime('%d.%m.%Y')} • {days[now.weekday()]}"
+
+    lines = [
+        "<b>ЧІТКО</b>",
+        date_line,
+        "",
+        "<b>КУРС НБУ</b>",
+        f"USD    {fmt_uah(rates.get('usd'))} ₴    {fmt_delta(rates.get('usd_delta'))}",
+        f"EUR    {fmt_uah(rates.get('eur'))} ₴    {fmt_delta(rates.get('eur_delta'))}",
+        "",
+        "<b>ПАЛИВО</b>",
+        f"А-95    {fmt_uah(fuel.get('a95'))} ₴/л",
+        f"ДП      {fmt_uah(fuel.get('dp'))} ₴/л",
+        f"Газ     {fmt_uah(fuel.get('lpg'))} ₴/л",
+        "",
+        "<b>ГОЛОВНЕ ЗА НІЧ</b>",
+    ]
+    for i, h in enumerate(headlines[:3], 1):
+        title = (h.get("title_chitko") or h.get("title_original") or "").strip().rstrip(".")
+        if title:
+            lines.append(f"{i}. {title}")
+
+    lines += ["", "<b>ЧІТКО. Коротко. По суті.</b>"]
+    return "\n".join(lines)
+
 def format_evening_digest_text(rates, fuel, headlines: list) -> str:
     from datetime import datetime
     from zoneinfo import ZoneInfo
