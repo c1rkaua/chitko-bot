@@ -174,113 +174,137 @@ def fetch_official_alerts() -> dict:
     print(f"AIR status kyiv={result['kyiv']} oblast={result['oblast']}")
     return result
 
-def decide_alert_action(current: dict, state: dict) -> dict:
-    kyiv_was = state.get("kyiv_alert", False)
-    obl_was = state.get("oblast_alert", False)
-    kyiv_now = current.get("kyiv", False)
-    obl_now = current.get("oblast", False)
-    kyiv_dur = _fmt_duration(state.get("kyiv_since") or 0)
-    obl_dur = _fmt_duration(state.get("oblast_since") or 0)
-    repeat = _minutes_since_end(state) <= 90
+def decide_alert_action(state: dict, kyiv_now: bool, oblast_now: bool) -> dict:
+    import random
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    def with_dur(text: str, extra: str = "") -> str:
-        if extra:
-            return text + "\n\n" + extra
-        return text
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    kyiv_was = bool(state.get("kyiv_alert"))
+    oblast_was = bool(state.get("oblast_alert"))
+    initialized = bool(state.get("initialized"))
 
-    if (not kyiv_now) and obl_now and not state.get("kyiv_end_sent"):
-        extra = f"У Києві тривога тривала {kyiv_dur}." if kyiv_dur else ""
+    def minutes_since_end():
+        raw = state.get("last_end_at")
+        if not raw:
+            return 9999
+        try:
+            end = datetime.fromisoformat(str(raw))
+            return (now - end).total_seconds() / 60
+        except Exception:
+            return 9999
+
+    is_repeat = minutes_since_end() <= 90
+
+    # перший запуск після рестарту — тільки записати стан
+    if not initialized:
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END_KYIV",
-            "title": "🟢 Відбій у Києві",
-            "text": with_dur(random.choice(KYIV_OFF_OBLAST_ON), extra),
-            "reason": "Відбій у Києві, область ще під сиреною.",
+            "action": "warmup",
+            "text": "",
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
         }
 
-    if (not obl_now) and kyiv_now and not state.get("oblast_end_sent"):
-        extra = f"В області тривога тривала {obl_dur}." if obl_dur else ""
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END_OBLAST",
-            "title": "🟢 Відбій у Київській області",
-            "text": with_dur(random.choice(OBLAST_OFF_KYIV_ON), extra),
-            "reason": "Відбій в області, Київ ще під сиреною.",
-        }
+    started_kyiv = kyiv_now and not kyiv_was
+    started_oblast = oblast_now and not oblast_was
+    ended_kyiv = (not kyiv_now) and kyiv_was
+    ended_oblast = (not oblast_now) and oblast_was
 
-    if (kyiv_was or obl_was) and (not kyiv_now) and (not obl_now):
-        bits = []
-        if kyiv_dur:
-            bits.append(f"Київ — {kyiv_dur}.")
-        if obl_dur:
-            bits.append(f"Область — {obl_dur}.")
-        pool = BOTH_CLEAR_NIGHT if _is_night() else BOTH_CLEAR_DAY
+    # СТАРТ / ПОВТОР
+    if started_kyiv or started_oblast:
+        kind = "repeat" if is_repeat else "start"
+        closer = random.choice(REPEAT_ALERT) if kind == "repeat" else ""
+        text = build_alert_start_text(
+            kind=kind,
+            kyiv=kyiv_now,
+            oblast=oblast_now,
+            closer=closer,
+        )
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END",
-            "title": "🟢 Відбій повітряної тривоги",
-            "text": with_dur(random.choice(pool), " ".join(bits)),
-            "reason": "Повний відбій.",
-        }
-
-    if kyiv_now and not kyiv_was:
-        if repeat:
-            where = "в Києві та Київській області" if obl_now else "в Києві"
-            text = (
-                f"{random.choice(REPEAT_ALERT)}\n\n"
-                f"Повторна повітряна тривога {where}.\n"
-                "Пройдіть в укриття."
-            )
-            title = "🚨 Повторна повітряна тривога"
-        elif obl_now:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Києві та Київській області.\n\nПройдіть в укриття."
-        else:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Києві.\n\nПройдіть в укриття."
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_START",
-            "title": title,
+            "action": "start",
             "text": text,
-            "reason": "Старт по Києву.",
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
         }
 
-    if obl_now and not obl_was and not kyiv_now:
-        if repeat:
-            text = (
-                f"{random.choice(REPEAT_ALERT)}\n\n"
-                "Повторна повітряна тривога в Київській області.\n"
-                "Стежимо за Києвом."
-            )
-            title = "🚨 Повторна повітряна тривога"
-        else:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Київській області.\n\nСтежимо за Києвом."
+    # ВІДБІЙ: Київ ні, область ще так
+    if ended_kyiv and oblast_now:
+        text = random.choice(KYIV_OFF_OBLAST_ON)
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_START",
-            "title": title,
+            "action": "kyiv_off",
             "text": text,
-            "reason": "Старт по області.",
+            "kyiv": False,
+            "oblast": True,
+            "initialized": True,
         }
 
-    if kyiv_now and not kyiv_was and obl_was:
+    # ВІДБІЙ: область ні, Київ ще так
+    if ended_oblast and kyiv_now:
+        text = random.choice(OBLAST_OFF_KYIV_ON)
         return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_UPDATE",
-            "title": "⚠️ Оновлення щодо повітряної загрози",
-            "text": "Тривогу оголошено також у Києві.\n\nПройдіть в укриття.",
-            "reason": "Київ підключився.",
+            "action": "oblast_off",
+            "text": text,
+            "kyiv": True,
+            "oblast": False,
+            "initialized": True,
         }
 
-    return {"action": "IGNORE", "reason": "Статус не змінився."}
+    # ВІДБІЙ ОБОХ
+    if ended_kyiv or ended_oblast:
+        if not kyiv_now and not oblast_now:
+            hour = now.hour
+            pool = BOTH_CLEAR_NIGHT if hour >= 22 or hour < 6 else BOTH_CLEAR_DAY
+            text = random.choice(pool)
+            return {
+                "action": "all_clear",
+                "text": text,
+                "kyiv": False,
+                "oblast": False,
+                "initialized": True,
+                "last_end_at": now.isoformat(),
+            }
+
+    return {
+        "action": "none",
+        "text": "",
+        "kyiv": kyiv_now,
+        "oblast": oblast_now,
+        "initialized": True,
+    }
+
 
 def format_air_post(decision: dict) -> str:
     title = decision.get("title", "").strip()
     text = decision.get("text", "").strip()
     return f"<b>{title}</b>\n\n{text}\n\n<b>ЧІТКО</b>"
 
+def build_alert_start_text(kind: str, kyiv: bool, oblast: bool, closer: str = "") -> str:
+    if kyiv and oblast:
+        where = "у Києві та Київській області"
+    elif kyiv:
+        where = "у Києві"
+    else:
+        where = "у Київській області"
+
+    if kind == "repeat":
+        line = closer.strip() if closer else "Повторна тривога. Короткий антракт закінчився."
+        if line.lower().startswith("повторна"):
+            body = line
+        else:
+            body = line
+        return (
+            f"🚨 <b>Повторна повітряна тривога</b>\n\n"
+            f"{body}\n\n"
+            f"Пройдіть в укриття."
+        )
+
+    return (
+        f"🚨 <b>Повітряна тривога</b>\n\n"
+        f"Оголошена {where}.\n\n"
+        f"Пройдіть в укриття."
+    )
 
 def process_air_cycle() -> dict:
     state = load_state()
