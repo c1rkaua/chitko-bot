@@ -757,38 +757,125 @@ def build_live_meaning(title: str, body: str, category: str = "") -> str:
         print(f"LLM meaning exception: {e}")
         return ""
 
+def rewrite_chitko_post(title: str, body: str, category: str = "") -> dict:
+    import os
+    import requests
+    import re
+
+    empty = {"title": title.strip(), "body": body.strip(), "meaning": ""}
+    api_key = os.getenv("XAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        print("LLM rewrite: key=NO")
+        return empty
+
+    use_xai = bool(os.getenv("XAI_API_KEY"))
+    url = "https://api.x.ai/v1/chat/completions" if use_xai else "https://api.openai.com/v1/chat/completions"
+    model = "grok-3-mini" if use_xai else "gpt-4o-mini"
+
+    system = """Ти головний редактор українського Telegram-каналу ЧІТКО.
+Ти не бот і не рерайтер. Ти жива редакція: зрозумів подію і написав пост людині.
+
+ВІДПОВІДАЙ СТРОГО ТАКИМ ФОРМАТОМ, без будь-якого тексту навколо:
+TITLE: ...
+BODY: ...
+MEANING: ...
+
+TITLE
+Один рядок українською. Головний факт першим. Без канцеляриту, без назви джерела, без крапки в кінці якщо це заголовок-факт.
+Не копіюй заголовок джерела дослівно, якщо його можна сказати простіше.
+
+BODY
+2–4 короткі абзаци українською. Між абзацами порожній рядок.
+Спочатку що сталось. Потім 1–2 деталі. Без води.
+Не повторюй заголовок першим реченням.
+Пиши як розумна людина в месенджері: спокійно, точно, трохи живо.
+Можна «Простіше кажучи», «Тут є нюанс» — лише якщо це природно.
+Заборони: варто зазначити, на даний момент, ситуація напружена, стежимо за розвитком, таким чином.
+Не вигадуй цифри, імена, причини, наслідки.
+Не плутай Росію з Україною.
+Трагедія — стримано, без шоку.
+Кожне речення з крапкою.
+
+MEANING
+1 речення, починається з «Що це означає:».
+Це відповідь на «і що?», не переказ факту.
+Якщо додавати нічого — напиши рівно: SKIP
+
+Якщо новина сміття і публікувати не варто — все одно заповни TITLE і BODY коротко по факту, MEANING: SKIP."""
+
+    user = f"Заголовок джерела: {title}\n\nТекст джерела: {body[:1200]}\n\nКатегорія: {category or '-'}"
+
+    try:
+        resp = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "temperature": 0.35,
+                "max_tokens": 450,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            },
+            timeout=20,
+        )
+        print(f"LLM rewrite HTTP {resp.status_code}")
+        if resp.status_code != 200:
+            print(f"LLM rewrite body: {resp.text[:300]}")
+            return empty
+
+        raw = (
+            resp.json()
+            .get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+        print(f"LLM rewrite text: {raw[:180]}")
+
+        def grab(tag):
+            m = re.search(
+                rf"{tag}:\s*(.+?)(?=\n(?:TITLE|BODY|MEANING):|\Z)",
+                raw,
+                flags=re.S | re.I,
+            )
+            return m.group(1).strip() if m else ""
+
+        new_title = grab("TITLE") or title.strip()
+        new_body = grab("BODY") or body.strip()
+        meaning = grab("MEANING")
+        if not meaning or meaning.upper().startswith("SKIP"):
+            meaning = ""
+        elif not meaning.startswith("Що це означає"):
+            meaning = "Що це означає: " + meaning
+
+        new_title = new_title.split("\n")[0].strip(" .")
+        return {"title": new_title, "body": new_body, "meaning": meaning}
+    except Exception as e:
+        print(f"LLM rewrite exception: {e}")
+        return empty
+
 def format_news_post(news: dict) -> str:
     title = news.get("title_chitko", news.get("title_original", "")).strip()
     text = news.get("text_chitko", news.get("summary", "")).strip()
 
-    text = text.replace("\n", " ").strip()
-    while "  " in text:
-        text = text.replace("  ", " ")
+    rewritten = rewrite_chitko_post(title, text, news.get("category", ""))
+    title = rewritten.get("title") or title
+    text = rewritten.get("body") or text
+    meaning = rewritten.get("meaning") or ""
 
-    import re
-    sentences = re.split(r'(?<=[.!?])\s+', text)
-    sentences = [s.strip() for s in sentences if len(s.strip()) > 30]
-
-    junk_parts = [
-        "суспільне веде онлайн",
-        "онлайн щодо",
-        "читайте також",
-        "підписуйтесь",
-        "більше новин",
-        "слідкуйте за оновленнями",
-        "1645 день",
-        "день війни",
-    ]
-    clean_sentences = []
-    for s in sentences:
-        low = s.lower()
-        if any(j in low for j in junk_parts):
-            continue
-        clean_sentences.append(s)
-    sentences = clean_sentences
+    text = text.strip()
+    while "\n\n\n" in text:
+        text = text.replace("\n\n\n", "\n\n")
+    if text and text[-1] not in ".!?":
+        text = text + "."
 
     title_lower = title.lower()
-    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед"]):
+    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед", "авіабомб"]):
         emoji = "⚡️"
     elif any(w in title_lower for w in ["тцк", "мобілізац", "повістк", "бусифікац", "рейд"]):
         emoji = "⚠️"
@@ -799,21 +886,7 @@ def format_news_post(news: dict) -> str:
     else:
         emoji = "▪️"
 
-    if len(sentences) >= 3:
-        body = (
-            ensure_punctuation(sentences[0]) + "\n\n" +
-            ensure_punctuation(sentences[1]) + "\n\n" +
-            ensure_punctuation(sentences[2])
-        )
-    elif len(sentences) == 2:
-        body = ensure_punctuation(sentences[0]) + "\n\n" + ensure_punctuation(sentences[1])
-    elif len(sentences) == 1:
-        body = ensure_punctuation(sentences[0])
-    else:
-        body = "Деталі уточнюються."
-
-    category = news.get("category") or get_news_category(title)
-    meaning = build_live_meaning(title, body, category)
+    body = text
 
     if meaning:
         post = f"{emoji} <b>{title}</b>\n\n{body}\n\n{meaning}\n\n<b>ЧІТКО</b>"
