@@ -36,6 +36,30 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
+async def publish_news_post(news: dict, formatted: str):
+    cover_v = os.path.join(os.path.dirname(__file__), "assets", "cover_vazhlyvo.jpg")
+    image_url = news.get("image_url")
+    score = float(news.get("final_score") or 0)
+    try:
+        if image_url:
+            await bot.send_photo(
+                CHANNEL_ID,
+                photo=image_url,
+                caption=formatted,
+                parse_mode="HTML",
+            )
+        elif score >= 90 and os.path.exists(cover_v):
+            await bot.send_photo(
+                CHANNEL_ID,
+                photo=FSInputFile(cover_v),
+                caption=formatted,
+                parse_mode="HTML",
+            )
+        else:
+            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    except Exception:
+        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Kyiv"))
@@ -684,32 +708,19 @@ async def cmd_threat(message: Message):
 # ======================
 @dp.callback_query(F.data == "approve_brief")
 async def approve_brief(callback: CallbackQuery):
-    # Спочатку публікуємо бріф
-    text = callback.message.text
+    text = callback.message.text or callback.message.caption or ""
     await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-    
-    # Потім окремі новини
+
     news_list = get_top_news_for_brief(3)
-    
     for news in news_list:
         formatted = format_news_post(news)
-        image_url = news.get("image_url")
-        
-        try:
-            if image_url:
-                await bot.send_photo(
-                    CHANNEL_ID,
-                    photo=image_url,
-                    caption=formatted,
-                    parse_mode="HTML"
-                )
-            else:
-                await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-        except Exception:
-            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-    
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Добавил на канал ✅")
+        await publish_news_post(news, formatted)
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.answer("Бриф опубліковано")
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("approve_one_"))
 async def approve_one(callback: CallbackQuery):
