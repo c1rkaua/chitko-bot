@@ -442,8 +442,10 @@ async def create_morning_brief():
         rates = get_nbu_rates()
     except Exception as e:
         print(f"BRIEF rates: {e}")
-        rates = {"usd": None, "eur": None, "pln": None,
-                 "usd_delta": None, "eur_delta": None, "pln_delta": None}
+        rates = {
+            "usd": None, "eur": None, "pln": None,
+            "usd_delta": None, "eur_delta": None, "pln_delta": None,
+        }
     try:
         fuel = get_fuel_prices()
     except Exception as e:
@@ -451,22 +453,33 @@ async def create_morning_brief():
         fuel = {"a95": None, "dp": None, "lpg": None}
     try:
         headlines = get_top_news_for_brief(5)
-                headlines = pick_brief_headlines(headlines, 3)
     except Exception as e:
         print(f"BRIEF news: {e}")
         headlines = []
-                headlines = pick_brief_headlines(headlines, 3)
+    headlines = pick_brief_headlines(headlines, 3)
     return format_morning_brief_text(rates, fuel, headlines)
 
+
 async def create_evening_digest():
-    rates = get_nbu_rates()
-    fuel = get_fuel_prices()
+    try:
+        rates = get_nbu_rates()
+    except Exception as e:
+        print(f"DIGEST rates: {e}")
+        rates = {
+            "usd": None, "eur": None, "pln": None,
+            "usd_delta": None, "eur_delta": None, "pln_delta": None,
+        }
+    try:
+        fuel = get_fuel_prices()
+    except Exception as e:
+        print(f"DIGEST fuel: {e}")
+        fuel = {"a95": None, "dp": None, "lpg": None}
     try:
         headlines = get_top_news_for_brief(8)
-                headlines = pick_brief_headlines(headlines, 5)
-    except Exception:
+    except Exception as e:
+        print(f"DIGEST news: {e}")
         headlines = []
-                headlines = pick_brief_headlines(headlines, 5)
+    headlines = pick_brief_headlines(headlines, 5)
     return format_evening_digest_text(rates, fuel, headlines)
 
 async def scheduled_digest():
