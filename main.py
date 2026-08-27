@@ -451,7 +451,10 @@ async def cmd_air(message: Message):
         return
     try:
         from air_engine import process_air_cycle
-        result = await process_air_cycle(bot, dry_run=True)
+        result = await process_air_cycle()
+        if not isinstance(result, dict):
+            await message.answer(str(result))
+            return
         await message.answer(
             f"Київ: {'тривога' if result.get('kyiv') else 'тихо'}\n"
             f"Область: {'тривога' if result.get('oblast') else 'тихо'}\n"
