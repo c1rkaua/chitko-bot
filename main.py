@@ -151,19 +151,14 @@ def get_fuel_prices() -> dict:
 # ======================
 # Формування бріфу
 # ======================
-def format_morning_brief_text(rates, fuel, headlines: list) -> str:
+def format_evening_digest_text(rates, fuel, headlines: list) -> str:
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
     now = datetime.now(ZoneInfo("Europe/Kyiv"))
     days = [
-        "понеділок",
-        "вівторок",
-        "середа",
-        "четвер",
-        "п’ятниця",
-        "субота",
-        "неділя",
+        "понеділок", "вівторок", "середа", "четвер",
+        "п’ятниця", "субота", "неділя",
     ]
     date_line = f"{now.strftime('%d.%m.%Y')} • {days[now.weekday()]}"
 
@@ -180,12 +175,12 @@ def format_morning_brief_text(rates, fuel, headlines: list) -> str:
         f"ДП      {fmt_uah(fuel.get('dp'))} ₴/л",
         f"Газ     {fmt_uah(fuel.get('lpg'))} ₴/л",
         "",
-        "<b>ГОЛОВНЕ ЗА НІЧ</b>",
+        "<b>ГОЛОВНЕ ЗА ДЕНЬ</b>",
     ]
-    for i, h in enumerate(headlines[:3], 1):
-        title = (h.get("title_chitko") or h.get("title_original") or "").strip()
-        title = title.rstrip(".")
-        lines.append(f"{i}. {title}")
+    for i, h in enumerate(headlines[:5], 1):
+        title = (h.get("title_chitko") or h.get("title_original") or "").strip().rstrip(".")
+        if title:
+            lines.append(f"{i}. {title}")
 
     lines += ["", "<b>ЧІТКО. Коротко. По суті.</b>"]
     return "\n".join(lines)
