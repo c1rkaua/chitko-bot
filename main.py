@@ -25,6 +25,7 @@ from apscheduler.triggers.cron import CronTrigger
 import pytz
 from air_engine import process_air_cycle, format_air_post
 from air_attack import ingest_targets, close_attack, format_summary, load_attack
+from air_monitor import poll_new_targets
 
 pending_news = {}  # тимчасове сховище новин на апрув
 
@@ -530,22 +531,28 @@ async def scheduled_news():
         f"Время: {datetime.now().strftime('%H:%M')}"
     )
 
-async def scheduled_air():
-    decision = process_air_cycle()
-    if decision.get("action") != "PUBLISH":
+async def scheduled_threats():
+    try:
+        results = poll_new_targets()
+    except Exception as e:
+        print(f"THREAT poll error: {e}")
         return
 
-    text = format_air_post(decision)
-    try:
-        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-        await bot.send_message(
-            ADMIN_GROUP_ID,
-            f"Тривога опублікована.\n{decision.get('reason', '')}"
-        )
-        if decision.get("event_type") == "ALERT_END":
-            close_attack()
-    except Exception as e:
-        print(f"AIR send error: {e}")
+    for result in results:
+        if result.get("action") not in ("PUBLISH", "UPDATE"):
+            continue
+        msg = result.get("message")
+        if not msg:
+            continue
+        try:
+            await bot.send_message(CHANNEL_ID, msg, parse_mode="HTML")
+            await bot.send_message(
+                ADMIN_GROUP_ID,
+                f"Атака авто: {result.get('action')} / {result.get('reason')}"
+            )
+        except Exception as e:
+            print(f"THREAT send error: {e}")
+
             
 async def main():
     print("Я заработал")
@@ -573,6 +580,8 @@ async def main():
         "interval",
         seconds=20
     )
+    
+    
 
     scheduler.start()
     print("Планувальник запущено")
