@@ -449,23 +449,18 @@ async def cmd_digest(message: Message):
 async def cmd_air(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
         return
-
-    decision = process_air_cycle()
-    current = decision.get("current", {})
-    status = (
-        f"Київ: {'тривога' if current.get('kyiv') else 'тихо'}\n"
-        f"Область: {'тривога' if current.get('oblast') else 'тихо'}\n"
-        f"Action: {decision.get('action')}\n"
-        f"{decision.get('reason', '')}"
-    )
-    await message.answer(status)
-
-    if decision.get("action") == "PUBLISH":
-        await bot.send_message(
-            CHANNEL_ID,
-            format_air_post(decision),
-            parse_mode="HTML"
+    try:
+        from air_engine import process_air_cycle
+        result = await process_air_cycle(bot, dry_run=True)
+        await message.answer(
+            f"Київ: {'тривога' if result.get('kyiv') else 'тихо'}\n"
+            f"Область: {'тривога' if result.get('oblast') else 'тихо'}\n"
+            f"Action: {result.get('action')}\n"
+            f"{result.get('text') or 'Статус не змінився.'}"
         )
+    except Exception as e:
+        await message.answer(f"/air упав: {type(e).__name__}: {e}")
+        print(f"AIR cmd error: {e}")
 
 @dp.message(Command("threat"))
 async def cmd_threat(message: Message):
