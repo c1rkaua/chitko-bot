@@ -23,6 +23,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
+from air_engine import process_air_cycle, format_air_post
 
 pending_news = {}  # тимчасове сховище новин на апрув
 
@@ -215,6 +216,28 @@ async def cmd_digest(message: Message):
         return
     await message.answer("Збираю вечірній дайджест...")
     await scheduled_evening_digest()
+
+@dp.message(Command("air"))
+async def cmd_air(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+
+    decision = process_air_cycle()
+    current = decision.get("current", {})
+    status = (
+        f"Київ: {'тривога' if current.get('kyiv') else 'тихо'}\n"
+        f"Область: {'тривога' if current.get('oblast') else 'тихо'}\n"
+        f"Action: {decision.get('action')}\n"
+        f"{decision.get('reason', '')}"
+    )
+    await message.answer(status)
+
+    if decision.get("action") == "PUBLISH":
+        await bot.send_message(
+            CHANNEL_ID,
+            format_air_post(decision),
+            parse_mode="HTML"
+        )
 
 # ======================
 # Обробка кнопок
@@ -468,6 +491,21 @@ async def scheduled_news():
         f"Авто: {len(to_publish)}\n"
         f"Время: {datetime.now().strftime('%H:%M')}"
     )
+
+async def scheduled_air():
+    decision = process_air_cycle()
+    if decision.get("action") != "PUBLISH":
+        return
+
+    text = format_air_post(decision)
+    try:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        await bot.send_message(
+            ADMIN_GROUP_ID,
+            f"Тривога опублікована.\n{decision.get('reason', '')}"
+        )
+    except Exception as e:
+        print(f"AIR send error: {e}")
             
 async def main():
     print("Я заработал")
@@ -486,10 +524,21 @@ async def main():
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv")
     )
 
+    scheduler.add_job(
+        scheduled_evening_digest,
+        CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv")
+    )
+    scheduler.add_job(
+        scheduled_air,
+        "interval",
+        seconds=20
+    )
+
     scheduler.start()
     print("Планувальник запущено")
 
     await dp.start_polling(bot)
+    
 
 
 if __name__ == "__main__":
