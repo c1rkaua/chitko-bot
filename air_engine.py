@@ -296,43 +296,104 @@ def build_alert_start_text(kind: str, kyiv: bool, oblast: bool, closer: str = ""
         f"Пройдіть в укриття."
     )
 
-async def process_air_cycle() -> dict:
-    state = load_state()
-    current = get_current_alerts()
+def decide_alert_action(a, b=None, oblast_now=None) -> dict:
+    import random
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
-    kyiv_now = bool(
-        current.get("kyiv")
-        or current.get("kyiv_alert")
-        or current.get("kyiv_on")
-    )
-    oblast_now = bool(
-        current.get("oblast")
-        or current.get("oblast_alert")
-        or current.get("oblast_on")
-    )
+    # старий виклик: decide_alert_action(current, state)
+    if isinstance(a, dict) and isinstance(b, dict) and oblast_now is None:
+        current = a
+        state = b
+        kyiv_now = bool(current.get("kyiv") or current.get("kyiv_alert") or current.get("kyiv_on"))
+        oblast_now = bool(current.get("oblast") or current.get("oblast_alert") or current.get("oblast_on"))
+    else:
+        state = a
+        kyiv_now = bool(b)
+        oblast_now = bool(oblast_now)
 
-    decision = decide_alert_action(state, kyiv_now, oblast_now)
-    action = decision.get("action") or "IGNORE"
-    text = (decision.get("text") or "").strip()
+    now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    kyiv_was = bool(state.get("kyiv_alert"))
+    oblast_was = bool(state.get("oblast_alert"))
+    initialized = bool(state.get("initialized"))
 
-    if action != "IGNORE" and text:
+    def minutes_since_end():
+        raw = state.get("last_end_at")
+        if not raw:
+            return 9999
         try:
-            from main import bot, CHANNEL_ID
-            await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-        except Exception as e:
-            print(f"AIR send error: {e}")
+            end = datetime.fromisoformat(str(raw))
+            return (now - end).total_seconds() / 60
+        except Exception:
+            return 9999
 
-    state["kyiv_alert"] = current.get("kyiv", kyiv_now)
-    state["oblast_alert"] = current.get("oblast", oblast_now)
-    state["initialized"] = True
-    if decision.get("last_end_at"):
-        state["last_end_at"] = decision["last_end_at"]
-    save_state(state)
+    is_repeat = minutes_since_end() <= 90
 
-    decision["current"] = current
-    decision["action"] = action
-    decision["text"] = text
-    decision["kyiv"] = kyiv_now
-    decision["oblast"] = oblast_now
-    return decision
-        
+    if not initialized:
+        return {
+            "action": "IGNORE",
+            "text": "",
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
+        }
+
+    started_kyiv = kyiv_now and not kyiv_was
+    started_oblast = oblast_now and not oblast_was
+    ended_kyiv = (not kyiv_now) and kyiv_was
+    ended_oblast = (not oblast_now) and oblast_was
+
+    if started_kyiv or started_oblast:
+        kind = "repeat" if is_repeat else "start"
+        closer = random.choice(REPEAT_ALERT) if kind == "repeat" else ""
+        text = build_alert_start_text(
+            kind=kind,
+            kyiv=kyiv_now,
+            oblast=oblast_now,
+            closer=closer,
+        )
+        return {
+            "action": "start",
+            "text": text,
+            "kyiv": kyiv_now,
+            "oblast": oblast_now,
+            "initialized": True,
+        }
+
+    if ended_kyiv and oblast_now:
+        return {
+            "action": "kyiv_off",
+            "text": random.choice(KYIV_OFF_OBLAST_ON),
+            "kyiv": False,
+            "oblast": True,
+            "initialized": True,
+        }
+
+    if ended_oblast and kyiv_now:
+        return {
+            "action": "oblast_off",
+            "text": random.choice(OBLAST_OFF_KYIV_ON),
+            "kyiv": True,
+            "oblast": False,
+            "initialized": True,
+        }
+
+    if (ended_kyiv or ended_oblast) and (not kyiv_now) and (not oblast_now):
+        hour = now.hour
+        pool = BOTH_CLEAR_NIGHT if hour >= 22 or hour < 6 else BOTH_CLEAR_DAY
+        return {
+            "action": "all_clear",
+            "text": random.choice(pool),
+            "kyiv": False,
+            "oblast": False,
+            "initialized": True,
+            "last_end_at": now.isoformat(),
+        }
+
+    return {
+        "action": "IGNORE",
+        "text": "",
+        "kyiv": kyiv_now,
+        "oblast": oblast_now,
+        "initialized": True,
+    }
