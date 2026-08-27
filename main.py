@@ -56,12 +56,12 @@ def get_nbu_rates() -> dict:
     try:
         today = requests.get(
             "https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json",
-            timeout=10,
+            timeout=6,
         ).json()
         yday = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
         prev = requests.get(
             f"https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?date={yday}&json",
-            timeout=10,
+            timeout=6,
         ).json()
     except Exception as e:
         print(f"NBU error: {e}")
@@ -177,11 +177,21 @@ def format_morning_brief_text(rates, fuel, headlines: list) -> str:
     return "\n".join(lines)
 
 async def create_morning_brief():
-    rates = get_nbu_rates()
-    fuel = get_fuel_prices()
+    try:
+        rates = get_nbu_rates()
+    except Exception as e:
+        print(f"BRIEF rates: {e}")
+        rates = {"usd": None, "eur": None, "pln": None,
+                 "usd_delta": None, "eur_delta": None, "pln_delta": None}
+    try:
+        fuel = get_fuel_prices()
+    except Exception as e:
+        print(f"BRIEF fuel: {e}")
+        fuel = {"a95": None, "dp": None, "lpg": None}
     try:
         headlines = get_top_news_for_brief(5)
-    except Exception:
+    except Exception as e:
+        print(f"BRIEF news: {e}")
         headlines = []
     return format_morning_brief_text(rates, fuel, headlines)
     
