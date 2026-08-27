@@ -228,7 +228,6 @@ def decide_alert_action(current: dict, state: dict) -> dict:
             where = "в Києві та Київській області" if obl_now else "в Києві"
             text = (
                 f"{random.choice(REPEAT_ALERT)}\n\n"
-                f"Повторна повітряна тривога {where}.\n"
                 "Пройдіть в укриття."
             )
             title = "🚨 Повторна повітряна тривога"
@@ -250,7 +249,6 @@ def decide_alert_action(current: dict, state: dict) -> dict:
         if repeat:
             text = (
                 f"{random.choice(REPEAT_ALERT)}\n\n"
-                "Повторна повітряна тривога в Київській області.\n"
                 "Стежимо за Києвом."
             )
             title = "🚨 Повторна повітряна тривога"
