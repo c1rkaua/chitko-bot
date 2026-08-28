@@ -941,6 +941,9 @@ def pick_cycle_news(items: list) -> list:
     return out
 
 async def scheduled_news():
+    print("scheduled_news paused")
+    return
+
     news_list = get_top_news_for_brief(12)
     news_list = pick_cycle_news(news_list)
     to_publish = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
