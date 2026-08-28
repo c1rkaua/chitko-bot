@@ -944,22 +944,36 @@ MEANING не повинен повторювати новину, а має пр�
         return empty
 
 def format_news_post(news: dict) -> str:
+    import re
+
     title = (news.get("title_chitko") or news.get("title_original") or news.get("title") or "").strip()
-    body = (news.get("body_chitko") or news.get("text") or news.get("summary") or "").strip()
+    body = (news.get("body_chitko") or news.get("text_chitko") or news.get("text") or news.get("summary") or "").strip()
     meaning = (news.get("meaning") or "").strip()
     if meaning.lower() in ("", "skip", "none"):
         meaning = ""
 
-    import re
+    body = re.sub(r"<[^>]+>", " ", body)
     body = re.sub(r"\s+", " ", body).strip()
+    body = re.sub(r"Підписатися на Times of Ukraine.*$", "", body, flags=re.I).strip()
+
+    title_norm = re.sub(r"\W+", " ", title.lower()).strip()
+    body_norm = re.sub(r"\W+", " ", body.lower()).strip()
+    if title_norm and body_norm.startswith(title_norm):
+        body = body[len(title):].lstrip(" .—–-")
+        body = re.sub(r"^\W+", "", body).strip()
+
     parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", body) if p.strip()]
-    if len(parts) <= 3:
+    if not parts:
+        body_block = ""
+    elif len(parts) <= 3:
         body_block = " ".join(parts)
     else:
         mid = max(2, (len(parts) + 1) // 2)
         body_block = " ".join(parts[:mid]) + "\n\n" + " ".join(parts[mid:])
 
-    lines = [f"<b>⚡️ {title}</b>", "", body_block]
+    lines = [f"<b>⚡️ {title}</b>"]
+    if body_block:
+        lines += ["", body_block]
     if meaning:
         lines += ["", meaning]
     lines += ["", "<b>ЧІТКО</b>"]
