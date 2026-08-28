@@ -38,32 +38,8 @@ ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 async def publish_news_post(news: dict, formatted: str):
-    cover_v = os.path.join(os.path.dirname(__file__), "assets", "cover_vazhlyvo.jpg")
-    image_url = news.get("image_url")
-    score = float(news.get("final_score") or 0)
-    try:
-        if image_url:
-            await bot.send_photo(
-                CHANNEL_ID,
-                photo=image_url,
-                caption=formatted,
-                parse_mode="HTML",
-            )
-        elif score >= 90 and os.path.exists(cover_v):
-            await bot.send_photo(
-                CHANNEL_ID,
-                photo=FSInputFile(cover_v),
-                caption=formatted,
-                parse_mode="HTML",
-            )
-        else:
-            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-    except Exception:
-        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
-scheduler = AsyncIOScheduler(timezone=pytz.timezone("Europe/Kyiv"))
+    print("PUBLISH blocked")
+    return
 # ======================
 # Отримання курсів НБУ
 # ======================
@@ -834,88 +810,8 @@ async def scheduled_evening_digest():
     )
 
 async def send_news_to_channel(news: dict, formatted: str):
-    import os
-    import re
-    import tempfile
-    import requests
-    from aiogram.types import FSInputFile, InputMediaPhoto
-
-    def is_thin(text: str) -> bool:
-        probe = re.sub(r"<[^>]+>", " ", text or "")
-        probe = probe.replace("⚡️", " ").replace("ЧІТКО", " ").replace("Чітко", " ").replace("чітко", " ")
-        probe = re.sub(r"\s+", " ", probe).strip()
-        return len(probe) < 12
-
-    if is_thin(formatted):
-        print("SEND skip thin")
-        return
-    if not (news.get("title_chitko") or news.get("title") or "").strip():
-        print("SEND skip no title")
-        return
-
-    def download(url: str):
-        try:
-            r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-            if r.status_code != 200 or len(r.content) < 2000:
-                return None
-            fd, path = tempfile.mkstemp(suffix=".jpg")
-            os.write(fd, r.content)
-            os.close(fd)
-            return path
-        except Exception as e:
-            print(f"DL fail {e}")
-            return None
-
-    photos = [u for u in (news.get("media_urls") or []) if u]
-    if not photos and news.get("image_url"):
-        photos = [news["image_url"]]
-    video = news.get("video_url")
-    paths = []
-
-    try:
-        if video:
-            path = download(video)
-            if path:
-                paths.append(path)
-                await bot.send_video(
-                    CHANNEL_ID, video=FSInputFile(path), caption=formatted, parse_mode="HTML"
-                )
-                return
-
-        files = []
-        for url in photos[:4]:
-            path = download(url)
-            if path:
-                files.append(path)
-                paths.append(path)
-
-        if len(files) >= 2:
-            media = [
-                InputMediaPhoto(media=FSInputFile(files[0]), caption=formatted, parse_mode="HTML")
-            ]
-            for p in files[1:]:
-                media.append(InputMediaPhoto(media=FSInputFile(p)))
-            await bot.send_media_group(CHANNEL_ID, media=media)
-            print(f"SEND album {len(media)}")
-            return
-
-        if len(files) == 1:
-            await bot.send_photo(
-                CHANNEL_ID, photo=FSInputFile(files[0]), caption=formatted, parse_mode="HTML"
-            )
-            return
-
-        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-    except Exception as e:
-        print(f"SEND media fail: {e}")
-        if not is_thin(formatted):
-            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
-    finally:
-        for p in paths:
-            try:
-                os.remove(p)
-            except Exception:
-                pass
+    print("SEND blocked")
+    return
 
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
@@ -943,39 +839,6 @@ def pick_cycle_news(items: list) -> list:
 async def scheduled_news():
     print("scheduled_news paused")
     return
-
-    news_list = get_top_news_for_brief(12)
-    news_list = pick_cycle_news(news_list)
-    to_publish = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
-
-    for news in to_publish:
-        if not (news.get("title_chitko") or news.get("title") or "").strip():
-            continue
-        if news.get("final_score", 0) >= 90 and news.get("source_url"):
-            try:
-                full_text = fetch_article_text_sync(news["source_url"])
-                if full_text and len(full_text) > 120:
-                    news["text_chitko"] = full_text
-            except Exception:
-                pass
-
-        formatted = format_news_post(news)
-        await send_news_to_channel(news, formatted)
-
-        published_ids.add(news["event_id"])
-        save_published_ids(published_ids)
-
-        recent = load_recent_titles()
-        recent.append(news.get("title_chitko") or news.get("title_original") or news.get("title") or "")
-        save_recent_titles(recent)
-
-    await bot.send_message(
-        ADMIN_GROUP_ID,
-        f"Проверил новости.\n"
-        f"Кандидаты: {len(news_list)}\n"
-        f"Авто: {len(to_publish)}\n"
-        f"Время: {datetime.now().strftime('%H:%M')}",
-    )
 
 async def scheduled_threats():
     try:
