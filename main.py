@@ -813,9 +813,14 @@ async def scheduled_evening_digest():
     )
 
 async def send_news_to_channel(news: dict, formatted: str):
+    title = (news.get("title_chitko") or news.get("title") or "").strip()
+    if len(title) < 8:
+        print("SEND skip short title")
+        return
     if not formatted or "⚡️" not in formatted:
         print("SEND skip")
         return
+
     image_url = news.get("image_url")
     try:
         if image_url and not is_bad_source_image(image_url):
