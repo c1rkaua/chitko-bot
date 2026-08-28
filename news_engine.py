@@ -32,26 +32,33 @@ WAR_FILLER_KEYS = [
 
 def extract_tg_media(chunk: str) -> dict:
     import re
-    photos = re.findall(
-        r"background-image:url\('?(https://cdn4\.telegram-cdn\.org/file/[^')\s]+)'?\)",
+
+    raw = re.findall(
+        r"background-image:url\('?(https?://cdn4\.telesco\.pe/file/[^')\s]+)'?\)",
         chunk,
     )
-    if not photos:
-        photos = re.findall(
-            r'(https://cdn4\.telegram-cdn\.org/file/[^"\')\s]+)',
-            chunk,
-        )
-    seen, clean = set(), []
-    for u in photos:
+    raw += re.findall(
+        r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+)",
+        chunk,
+    )
+    photos = []
+    seen = set()
+    for u in raw:
+        if "telegram.org/img/emoji" in u:
+            continue
         if u not in seen:
             seen.add(u)
-            clean.append(u)
+            photos.append(u)
+
     video = None
-    if "tgme_widget_message_video" in chunk or "video_player" in chunk:
-        m = re.search(r'(https://cdn4\.telegram-cdn\.org/file/[^"\')\s]+\.mp4)', chunk)
-        if m:
-            video = m.group(1)
-    return {"photos": clean[:4], "video": video}
+    m = re.search(
+        r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+\.mp4)",
+        chunk,
+    )
+    if m:
+        video = m.group(1)
+
+    return {"photos": photos[:4], "video": video}
 
 def fetch_tg_channel_posts() -> list:
     import hashlib
