@@ -917,7 +917,6 @@ async def send_news_to_channel(news: dict, formatted: str):
             except Exception:
                 pass
 
-
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
     out, civil, war = [], 0, 0
