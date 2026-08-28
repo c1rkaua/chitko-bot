@@ -958,29 +958,25 @@ def apply_editorial_caps(news: dict) -> dict:
 
 def pick_cycle_news(items: list) -> list:
     items = items or []
-    civil = [n for n in items if n.get("bucket") == "civilian" and (n.get("final_score") or 0) >= 55]
-    hard = [n for n in items if n.get("bucket") == "hard_war" and (n.get("final_score") or 0) >= 88]
-    other = [
-        n for n in items
-        if n.get("bucket") not in ("war_filler", "hard_war")
-        and n.get("bucket") != "civilian"
-        and (n.get("final_score") or 0) >= 70
-    ]
 
-    civil.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
-    hard.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
-    other.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+    def take(buckets, n, min_score=0):
+        rows = [
+            x for x in items
+            if x.get("bucket") in buckets and (x.get("final_score") or 0) >= min_score
+        ]
+        rows.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+        return rows[:n]
 
-    out = civil[:2]
-    if hard:
-        out.append(hard[0])
-    if len(out) < 2 and other:
-        out.append(other[0])
+    slot_a = take(("civilian",), 2, 55)
+    slot_b = take(("hard_war", "war_filler"), 1, 40)
+    slot_c = take(("other",), 1, 65) if len(slot_a) < 2 else []
 
+    out = slot_a + slot_b + slot_c
     print(
-        f"PICK civil={len(civil)} hard={len(hard)} other={len(other)} out={len(out)}"
+        f"PICK A={len(slot_a)} B={len(slot_b)} C={len(slot_c)} out={len(out)}"
     )
-    return out
+    return out[:3]
+
 
 if __name__ == "__main__":
     top = get_top_news_for_brief(5)

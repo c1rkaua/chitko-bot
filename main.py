@@ -11,6 +11,7 @@ from news_engine import (
     ensure_punctuation,
     load_recent_titles,
     save_recent_titles,
+    pick_cycle_news,
 )
 import asyncio
 import aiohttp
@@ -556,7 +557,8 @@ async def cmd_news(message: Message):
     await message.answer("Збираю новини...")
 
     news_list = get_top_news_for_brief(12)
-    to_auto = select_for_publish(news_list)
+    news_list = pick_cycle_news(news_list)
+    to_auto = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
     auto_published = 0
 
     for news in to_auto:
@@ -583,34 +585,24 @@ async def cmd_news(message: Message):
     auto_ids = {n["event_id"] for n in to_auto}
     for_approval = [
         n for n in news_list
-        if n["event_id"] not in auto_ids and n.get("final_score", 0) >= 45
+        if n["event_id"] not in auto_ids and float(n.get("final_score") or 0) >= 45
     ][:6]
 
     for news in for_approval:
         pending_news[news["event_id"]] = news
-
+        formatted = format_news_post(news)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="✅ APPROVED",
-                callback_data=f"approve_one_{news['event_id']}"
-            ),
-            InlineKeyboardButton(
-                text="❌ DECLINE",
-                callback_data=f"skip_one_{news['event_id']}"
-            )
+            InlineKeyboardButton(text="✅ APPROVED", callback_data=f"approve_one_{news['event_id']}"),
+            InlineKeyboardButton(text="❌ DECLINE", callback_data=f"skip_one_{news['event_id']}"),
         ]])
-
-        score = news.get("final_score", 0)
-        cat = news.get("category", get_news_category(news.get("title_original", "")))
-        conf = news.get("confidence_score", 0)
-        preview = (
-            f"<b>Score: {score}</b> | conf {conf} | {cat}\n\n"
-            f"{format_news_post(news)}"
+        await message.answer(
+            f"<b>Score: {news.get('final_score')}</b>\n\n{formatted}",
+            reply_markup=keyboard,
+            parse_mode="HTML",
         )
-        await message.answer(preview, reply_markup=keyboard, parse_mode="HTML")
 
     await message.answer(
-        f"Готово.\nАвто: {auto_published}\nНа апрув: {len(for_approval)}"
+        f"Кандидати: {len(news_list)}\nАвто: {auto_published}\nАпрув: {len(for_approval)}"
     )
 
 @dp.message(Command("digest"))
@@ -911,9 +903,33 @@ async def send_news_to_channel(news: dict, formatted: str):
             parse_mode="HTML"
         )
 
+def pick_cycle_news(items: list) -> list:
+    items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
+    out, civil, war = [], 0, 0
+    for n in items:
+        bucket = n.get("bucket") or ""
+        score = n.get("final_score") or 0
+        if score < 50:
+            continue
+        if bucket == "war_filler":
+            continue
+        if bucket == "hard_war":
+            if war >= 1:
+                continue
+            war += 1
+        if bucket == "civilian":
+            if civil >= 2:
+                continue
+            civil += 1
+        out.append(n)
+        if len(out) >= 3:
+            break
+    return out
+
 async def scheduled_news():
     news_list = get_top_news_for_brief(12)
-    to_publish = select_for_publish(news_list)
+    news_list = pick_cycle_news(news_list)
+    to_publish = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
 
     for news in to_publish:
         if news.get("final_score", 0) >= 90 and news.get("source_url"):
@@ -939,7 +955,7 @@ async def scheduled_news():
         f"Проверил новости.\n"
         f"Кандидаты: {len(news_list)}\n"
         f"Авто: {len(to_publish)}\n"
-        f"Время: {datetime.now().strftime('%H:%M')}"
+        f"Время: {datetime.now().strftime('%H:%M')}",
     )
 
 async def scheduled_air():
