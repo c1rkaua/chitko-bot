@@ -37,9 +37,12 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
+scheduler = AsyncIOScheduler(timezone="Europe/Kyiv")
+
 async def publish_news_post(news: dict, formatted: str):
-    print("PUBLISH blocked")
-    return
+    await send_news_to_channel(news, formatted)
 # ======================
 # Отримання курсів НБУ
 # ======================
@@ -810,8 +813,25 @@ async def scheduled_evening_digest():
     )
 
 async def send_news_to_channel(news: dict, formatted: str):
-    print("SEND blocked")
-    return
+    if not formatted or "⚡️" not in formatted:
+        print("SEND skip")
+        return
+    image_url = news.get("image_url")
+    try:
+        if image_url and not is_bad_source_image(image_url):
+            path = prepare_image_with_watermark(image_url)
+            if path:
+                await bot.send_photo(
+                    CHANNEL_ID,
+                    photo=FSInputFile(path),
+                    caption=formatted,
+                    parse_mode="HTML",
+                )
+                return
+        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    except Exception as e:
+        print(f"SEND fail {e}")
+        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
 
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
