@@ -606,7 +606,6 @@ def fetch_and_score_news(limit: int = 40) -> list:
 
 def get_top_news_for_brief(count: int = 4) -> list:
     news = fetch_and_score_news()
-    recent = []
     try:
         recent = load_recent_titles() or []
     except Exception:
