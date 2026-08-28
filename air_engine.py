@@ -275,9 +275,31 @@ def decide_alert_action(current: dict, state: dict) -> dict:
     return {"action": "IGNORE", "reason": "Статус не змінився."}
 
 def format_air_post(decision: dict) -> str:
-    title = decision.get("title", "").strip()
-    text = decision.get("text", "").strip()
-    return f"<b>{title}</b>\n\n{text}\n\n<b>ЧІТКО</b>"
+    import re
+
+    event = decision.get("event_type") or ""
+    raw_title = decision.get("title") or ""
+    title = re.sub(r"^[🚨🟢⚠️✅🌙😴🔁]+\s*", "", raw_title).strip()
+    title = re.sub(r"\s*🚨\s*$", "", title).strip()
+    body = (decision.get("text") or "").strip()
+
+    if event == "ALERT_START" and "Повторна" in raw_title:
+        line = "🔁🚨 <b>Повторна повітряна тривога</b>🚨"
+    elif event == "ALERT_START":
+        line = "🚨 <b>Повітряна тривога</b> 🚨"
+    elif event == "ALERT_UPDATE":
+        line = "⚠️ <b>Оновлення щодо тривоги</b>⚠️"
+    elif event == "ALERT_END_KYIV":
+        line = "🟢 <b>Відбій у Києві</b>🟢"
+    elif event == "ALERT_END_OBLAST":
+        line = "🟢 <b>Відбій у Київській області</b>🟢"
+    elif event == "ALERT_END":
+        mark = "🌙" if _is_night() else "✅"
+        line = f"{mark} <b>Відбій повітряної тривоги</b>"
+    else:
+        line = f"🚨 <b>{title or 'Повітряна тривога'}</b>🚨"
+
+    return f"{line}\n\n{body}\n\n<b>ЧІТКО</b>"
 
 
 def process_air_cycle() -> dict:
