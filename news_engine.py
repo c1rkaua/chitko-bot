@@ -30,6 +30,16 @@ WAR_FILLER_KEYS = [
     "триває відсіч", "на купянському",
 ]
 
+PUBLISHED_FILE = "published_ids.json"
+
+LAST_TG_STATS = {
+    "checked": 0,
+    "skipped": 0,
+    "kept": 0,
+    "by_channel": {},
+    "when": "",
+}
+
 def extract_tg_media(chunk: str) -> dict:
     import re
 
@@ -61,6 +71,7 @@ def extract_tg_media(chunk: str) -> dict:
     return {"photos": photos[:4], "video": video}
 
 def fetch_tg_channel_posts() -> list:
+    global LAST_TG_STATS
     import hashlib
     import re
     import requests
