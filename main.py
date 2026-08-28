@@ -931,26 +931,9 @@ async def scheduled_air():
             
 async def main():
     print("Я заработал")
-
-    scheduler.add_job(
-        scheduled_brief,
-        CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv")
-    )
-    scheduler.add_job(
-        scheduled_news,
-        "interval",
-        minutes=30
-    )
-    # вечірній дайджест вимкнено, поки ловимо флуд
-    scheduler.add_job(
-        scheduled_air,
-        "interval",
-        seconds=20
-    )
-
+    print("Jobs paused except polling")
     scheduler.start()
     print("Планувальник запущено")
-
     await dp.start_polling(bot)
     
 
