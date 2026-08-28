@@ -30,23 +30,49 @@ WAR_FILLER_KEYS = [
     "триває відсіч", "на купянському",
 ]
 
+def extract_tg_media(chunk: str) -> dict:
+    import re
+    photos = re.findall(
+        r"background-image:url\('?(https://cdn4\.telegram-cdn\.org/file/[^')\s]+)'?\)",
+        chunk,
+    )
+    if not photos:
+        photos = re.findall(
+            r'(https://cdn4\.telegram-cdn\.org/file/[^"\')\s]+)',
+            chunk,
+        )
+    seen, clean = set(), []
+    for u in photos:
+        if u not in seen:
+            seen.add(u)
+            clean.append(u)
+    video = None
+    if "tgme_widget_message_video" in chunk or "video_player" in chunk:
+        m = re.search(r'(https://cdn4\.telegram-cdn\.org/file/[^"\')\s]+\.mp4)', chunk)
+        if m:
+            video = m.group(1)
+    return {"photos": clean[:4], "video": video}
+
 def fetch_tg_channel_posts() -> list:
     import hashlib
     import re
     import requests
+    from datetime import datetime
 
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
     out = []
+    LAST_TG_STATS["checked"] = 0
+    LAST_TG_STATS["skipped"] = 0
+    LAST_TG_STATS["kept"] = 0
+    LAST_TG_STATS["by_channel"] = {}
+    LAST_TG_STATS["when"] = datetime.now().strftime("%H:%M")
 
     for username, meta in TG_SOURCES.items():
         kept = 0
         html = ""
+        messages = []
         try:
-            html = requests.get(
-                f"https://t.me/s/{username}",
-                headers=headers,
-                timeout=10,
-            ).text
+            html = requests.get(f"https://t.me/s/{username}", headers=headers, timeout=10).text
             if "tgme_widget_message" not in html:
                 html = requests.get(
                     f"https://r.jina.ai/http://t.me/s/{username}",
@@ -55,31 +81,36 @@ def fetch_tg_channel_posts() -> list:
                 ).text
         except Exception as e:
             print(f"TG {username}: {e}")
+            LAST_TG_STATS["by_channel"][username] = {"html": 0, "chunks": 0, "kept": 0}
             continue
 
-        texts = re.findall(
-            r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
+        messages = re.findall(
+            r'class="tgme_widget_message[^"]*"(.*?)class="tgme_widget_message_footer',
             html,
             flags=re.I | re.S,
         )
-        if not texts:
-            texts = re.findall(r"(?:^|\n)([^\n]{50,400})(?:\n|$)", html)
+        LAST_TG_STATS["checked"] += len(messages)
+        print(f"TG {username}: html={len(html)} chunks={len(messages)}")
 
-        print(f"TG {username}: html={len(html)} chunks={len(texts)}")
-
-        for raw in texts[:8]:
-            text = re.sub(r"<br\s*/?>", "\n", raw, flags=re.I)
+        for raw in messages[:8]:
+            text_bits = re.findall(
+                r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
+                raw,
+                flags=re.I | re.S,
+            )
+            blob = " ".join(text_bits) if text_bits else raw
+            text = re.sub(r"<br\s*/?>", "\n", blob, flags=re.I)
             text = re.sub(r"<[^>]+>", " ", text)
             text = re.sub(r"\s+", " ", text).strip()
             if len(text) < 40:
+                LAST_TG_STATS["skipped"] += 1
                 continue
-
             low = text.lower()
-            if any(k in low for k in WAR_FILLER_KEYS):
-                continue
-            if not any(k in low for k in CIVILIAN_KEYS):
+            if any(k in low for k in WAR_FILLER_KEYS) or not any(k in low for k in CIVILIAN_KEYS):
+                LAST_TG_STATS["skipped"] += 1
                 continue
 
+            media = extract_tg_media(raw)
             title = text.split(".")[0].strip()[:140]
             event_id = hashlib.md5(f"tg:{username}:{title[:80]}".encode()).hexdigest()
             news = {
@@ -93,13 +124,21 @@ def fetch_tg_channel_posts() -> list:
                 "link": f"https://t.me/{username}",
                 "source": meta.get("name") or username,
                 "source_name": meta.get("name") or username,
-                "image_url": None,
+                "image_url": media["photos"][0] if media["photos"] else None,
+                "media_urls": media["photos"],
+                "video_url": media["video"],
                 "final_score": 62.0,
             }
             news = apply_editorial_caps(news)
             out.append(news)
             kept += 1
+            LAST_TG_STATS["kept"] += 1
 
+        LAST_TG_STATS["by_channel"][username] = {
+            "html": len(html),
+            "chunks": len(messages),
+            "kept": kept,
+        }
         print(f"TG {username}: kept {kept}")
 
     return out
