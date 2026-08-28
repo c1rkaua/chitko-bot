@@ -813,30 +813,68 @@ async def scheduled_evening_digest():
     )
 
 async def send_news_to_channel(news: dict, formatted: str):
+    import os
+    import tempfile
+    import requests
+    from aiogram.types import FSInputFile, InputMediaPhoto
+
     title = (news.get("title_chitko") or news.get("title") or "").strip()
-    if len(title) < 8:
-        print("SEND skip short title")
-        return
-    if not formatted or "⚡️" not in formatted:
+    if len(title) < 8 or not formatted or "⚡️" not in formatted:
         print("SEND skip")
         return
 
-    image_url = news.get("image_url")
+    def download(url: str):
+        try:
+            r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200 or len(r.content) < 2000:
+                return None
+            fd, path = tempfile.mkstemp(suffix=".jpg")
+            os.write(fd, r.content)
+            os.close(fd)
+            return path
+        except Exception as e:
+            print(f"DL fail {e}")
+            return None
+
+    photos = [u for u in (news.get("media_urls") or []) if u]
+    if not photos and news.get("image_url") and not is_bad_source_image(news.get("image_url")):
+        photos = [news["image_url"]]
+
+    paths = []
     try:
-        if image_url and not is_bad_source_image(image_url):
-            path = prepare_image_with_watermark(image_url)
+        files = []
+        for url in photos[:4]:
+            path = download(url)
             if path:
-                await bot.send_photo(
-                    CHANNEL_ID,
-                    photo=FSInputFile(path),
-                    caption=formatted,
-                    parse_mode="HTML",
-                )
-                return
+                files.append(path)
+                paths.append(path)
+
+        if len(files) >= 2:
+            media = [
+                InputMediaPhoto(media=FSInputFile(files[0]), caption=formatted, parse_mode="HTML")
+            ]
+            for p in files[1:]:
+                media.append(InputMediaPhoto(media=FSInputFile(p)))
+            await bot.send_media_group(CHANNEL_ID, media=media)
+            print(f"SEND album {len(media)}")
+            return
+
+        if len(files) == 1:
+            await bot.send_photo(
+                CHANNEL_ID, photo=FSInputFile(files[0]), caption=formatted, parse_mode="HTML"
+            )
+            return
+
         await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
     except Exception as e:
         print(f"SEND fail {e}")
         await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    finally:
+        for p in paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
