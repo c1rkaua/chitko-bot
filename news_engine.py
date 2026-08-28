@@ -8,6 +8,24 @@ import os
 
 PUBLISHED_FILE = "published_ids.json"
 
+TG_SOURCES = {
+    "truexanewsua": {"name": "Труха", "trust": 6.5, "bias": "civilian"},
+    "lachentyt": {"name": "Лачен", "trust": 6.5, "bias": "civilian"},
+    "advokat_prava": {"name": "Адвокат Права", "trust": 7.0, "bias": "tck"},
+    "vanek_nikolaev": {"name": "Миколаївський Ванек", "trust": 6.5, "bias": "civilian"},
+}
+
+CIVILIAN_KEYS = [
+    "дтп", "аварі", "тцк", "бусифік", "мобіліз", "пожеж",
+    "вибух газу", "обвал", "затопи", "чп", "поранен",
+    "загинул", "стрілянин", "затриман", "хабар", "корупц",
+    "світло", "відключен", "тариф", "пенсі",
+]
+WAR_FILLER_KEYS = [
+    "генштаб зведення", "за добу знешкоджено", "окупанти не полишають",
+    "триває відсіч", "на купянському",
+]
+
 def load_published_ids():
     if os.path.exists(PUBLISHED_FILE):
         try:
@@ -343,124 +361,96 @@ def select_for_publish(news_list: list, max_auto: int = 2) -> list:
 
     return picked[:max_auto]
 
-def fetch_and_score_news(limit_per_source: int = 8) -> list:
-    all_news = []
+def fetch_and_score_news(limit: int = 40) -> list:
+    import hashlib
+    import feedparser
+    from datetime import datetime, timezone
 
-    for source_name, meta in RSS_SOURCES.items():
+    feeds = [
+        ("Суспільне", "https://suspilne.media/rss/", 8.5),
+        ("УП", "https://www.pravda.com.ua/rss/", 8.8),
+        ("Бабель", "https://babel.ua/rss", 8.6),
+        ("hromadske", "https://hromadske.ua/feed", 8.4),
+        ("Радіо Свобода", "https://www.radiosvoboda.org/api/zrqiteuuok", 8.7),
+        ("Укрінформ", "https://www.ukrinform.ua/rss/block-lastnews", 8.0),
+        ("ДСНС", "https://dsns.gov.ua/uk/news/rss", 9.0),
+    ]
+
+    published = set()
+    try:
+        published = set(load_published_ids() if "load_published_ids" in dir() else [])
+    except Exception:
+        published = set()
+    try:
+        from news_engine import published_ids as _pub
+        published |= set(_pub or [])
+    except Exception:
+        pass
+
+    out = []
+    seen = set()
+
+    for source_name, url, trust in feeds:
         try:
-            feed = feedparser.parse(meta["url"])
-
-            for entry in feed.entries[:limit_per_source]:
-                title = clean_text(entry.get("title", ""))
-                if not title or len(title) < 15:
-                    continue
-
-                published = None
-                if hasattr(entry, "published"):
-                    try:
-                        published = date_parser.parse(entry.published)
-                    except Exception:
-                        published = datetime.now(timezone.utc)
-                else:
-                    published = datetime.now(timezone.utc)
-
-                if published.tzinfo is None:
-                    published = published.replace(tzinfo=timezone.utc)
-
-                summary = clean_text(
-                    entry.get("summary", "") or entry.get("description", "")
-                )
-                link = entry.get("link", "")
-
-                trust = float(meta.get("trust", 8))
-                importance = calculate_importance(title, trust)
-                confidence = calculate_confidence(trust, title)
-
-                age_hours = max(
-                    0.1,
-                    (datetime.now(timezone.utc) - published).total_seconds() / 3600
-                )
-                freshness = max(0.55, 1.0 - (age_hours / 48.0) * 0.45)
-
-                final_score = importance * (0.75 + 0.25 * (confidence / 100.0)) * freshness
-                final_score = round(max(0.0, min(100.0, final_score)), 1)
-
-                if final_score < 45:
-                    news_class = "LOW"
-                elif final_score < 60:
-                    news_class = "DIGEST"
-                elif final_score < 75:
-                    news_class = "NORMAL"
-                elif final_score < 90:
-                    news_class = "HIGH"
-                else:
-                    news_class = "BREAKING"
-
-                if news_class == "LOW":
-                    continue
-
-                news_item = {
-                    "event_id": make_event_id(title),
-                    "title_original": title,
-                    "title_chitko": title,
-                    "text_chitko": summary,
-                    "summary": summary,
-                    "source": source_name,
-                    "source_url": link,
-                    "source_trust": trust,
-                    "published_at": published.isoformat(),
-                    "importance_score": round(importance, 1),
-                    "confidence_score": round(confidence, 1),
-                    "freshness_score": round(freshness, 2),
-                    "final_score": final_score,
-                    "class": news_class,
-                    "category": get_news_category(title),
-                    "status": "pending",
-                    "image_url": None,
-                    "video_url": None,
-                }
-
-                if "media_content" in entry:
-                    for media in entry.media_content:
-                        media_type = media.get("type", "")
-                        media_url = media.get("url")
-                        if not media_url:
-                            continue
-                        if media_type.startswith("image") and not news_item["image_url"]:
-                            news_item["image_url"] = media_url
-                        elif media_type.startswith("video") and not news_item["video_url"]:
-                            news_item["video_url"] = media_url
-
-                if not news_item["image_url"] and hasattr(entry, "links"):
-                    for link_item in entry.links:
-                        ltype = link_item.get("type", "")
-                        href = link_item.get("href")
-                        if not href:
-                            continue
-                        if ltype.startswith("image") and not news_item["image_url"]:
-                            news_item["image_url"] = href
-                        elif ltype.startswith("video") and not news_item["video_url"]:
-                            news_item["video_url"] = href
-
-                if news_item.get("image_url") and is_bad_source_image(news_item["image_url"]):
-                    news_item["image_url"] = None
-
-                all_news.append(news_item)
-
+            parsed = feedparser.parse(url)
         except Exception as e:
-            print(f"Помилка при читанні {source_name}: {e}")
+            print(f"FEED {source_name}: {e}")
             continue
 
-    all_news.sort(key=lambda x: x["final_score"], reverse=True)
+        for entry in (parsed.entries or [])[:12]:
+            title = (entry.get("title") or "").strip()
+            link = (entry.get("link") or "").strip()
+            summary = (entry.get("summary") or entry.get("description") or "").strip()
+            if not title or not link:
+                continue
 
-    seen = set()
-    unique_news = []
-    for item in all_news:
-        if item["event_id"] not in seen:
-            seen.add(item["event_id"])
-            unique_news.append(item)
+            event_id = hashlib.md5(link.encode("utf-8")).hexdigest()
+            if event_id in published or event_id in seen:
+                continue
+            seen.add(event_id)
 
-    recent_titles = load_recent_titles()
+            try:
+                score = float(calculate_importance(title, trust))
+            except Exception:
+                score = 50.0
+
+            image_url = None
+            media = entry.get("media_content") or entry.get("media_thumbnail") or []
+            if isinstance(media, list) and media:
+                image_url = media[0].get("url")
+            elif isinstance(media, dict):
+                image_url = media.get("url")
+            if not image_url:
+                enc = entry.get("enclosures") or []
+                if enc:
+                    image_url = enc[0].get("href")
+
+            try:
+                if image_url and is_bad_source_image(image_url):
+                    image_url = None
+            except Exception:
+                pass
+
+            news = {
+                "event_id": event_id,
+                "title": title,
+                "title_original": title,
+                "title_chitko": title,
+                "text": summary,
+                "summary": summary,
+                "body": summary,
+                "link": link,
+                "source": source_name,
+                "source_name": source_name,
+                "image_url": image_url,
+                "final_score": score,
+            }
+            news = apply_editorial_caps(news)
+            out.append(news)
+
+    out.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+    print(f"FETCH scored={len(out)}")
+    return out[:limit]
 
     def is_similar(t1, t2):
         s1 = set(t1.lower().split())
@@ -863,66 +853,79 @@ def format_news_post(news: dict) -> str:
     import re
     body = re.sub(r"\s+", " ", body).strip()
     parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", body) if p.strip()]
-    if len(parts) <= 2:
+    if len(parts) <= 3:
         body_block = " ".join(parts)
     else:
-        mid = (len(parts) + 1) // 2
+        mid = max(2, (len(parts) + 1) // 2)
         body_block = " ".join(parts[:mid]) + "\n\n" + " ".join(parts[mid:])
 
-    emoji = "⚡️"
-    lines = [f"<b>{emoji} {title}</b>", "", body_block]
+    lines = [f"<b>⚡️ {title}</b>", "", body_block]
     if meaning:
         lines += ["", meaning]
     lines += ["", "<b>ЧІТКО</b>"]
     return "\n".join(lines)
 
-    if meaning:
-        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n{meaning}\n\n<b>ЧІТКО</b>"
-    else:
-        post = f"{emoji} <b>{title}</b>\n\n{body}\n\n<b>ЧІТКО</b>"
-
-    if len(post) > 1000:
-        cut = post[:960]
-        last_dot = max(cut.rfind("."), cut.rfind("!"), cut.rfind("?"))
-        if last_dot > 200:
-            post = cut[:last_dot + 1] + "\n\n<b>ЧІТКО</b>"
-        else:
-            post = cut.rsplit(" ", 1)[0] + "…\n\n<b>ЧІТКО</b>"
-
-    return post
-
 def apply_editorial_caps(news: dict) -> dict:
     title = news.get("title_chitko") or news.get("title_original") or news.get("title") or ""
     text = news.get("text") or news.get("summary") or news.get("body") or ""
+    source = (news.get("source") or news.get("source_name") or "").lower()
     t = f"{title} {text}".lower()
     score = float(news.get("final_score") or 0)
 
+    civilian = any(k in t for k in CIVILIAN_KEYS)
+    war_filler = any(k in t for k in WAR_FILLER_KEYS)
     hard_war = any(x in t for x in [
         "по києву", "по харков", "по одесі", "по запоріж", "по сумах",
-        "балістик", "шахед", "масована атака",
+        "масована атака", "балістик",
     ])
-    war = any(x in t for x in ["удар по", "обстріл", "дрон", "ракет"])
-    civilian = any(x in t for x in [
-        "дтп", "аварі", "тцк", "мобіліз", "чп ", "пожеж",
-        "вибух на", "загинул", "поранен", "енерго", "світло",
-        "тариф", "курс нбу", "затриман", "корупц",
-    ])
-    filler = any(x in t for x in [
-        "захаров", "мід рф", "кремль заявив", "санду",
-        "кишинів", "молдов", "вірмен", "patriot у європ",
-    ])
+    filler_geo = any(x in t for x in ["санду", "кишинів", "молдов", "захаров", "вірмен"])
 
-    if filler and not hard_war and not civilian:
-        score = min(score, 55)
+    if "suspilne" in source or "суспільне" in source:
+        if war_filler and not civilian and not hard_war:
+            score = min(score, 48)
+        elif not civilian and not hard_war:
+            score = min(score, 72)
+
     if civilian:
+        score = min(100, score + 14)
+        news["bucket"] = "civilian"
+    elif hard_war:
         score = min(100, score + 10)
-    if hard_war:
-        score = min(100, score + 12)
-    elif war:
-        score = min(100, score + 4)
+        news["bucket"] = "hard_war"
+    elif war_filler:
+        score = min(score, 52)
+        news["bucket"] = "war_filler"
+    else:
+        news["bucket"] = news.get("bucket") or "other"
+
+    if filler_geo and not civilian and not hard_war:
+        score = min(score, 50)
 
     news["final_score"] = score
     return news
+
+def pick_cycle_news(items: list) -> list:
+    items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
+    out, civil, war = [], 0, 0
+    for n in items:
+        bucket = n.get("bucket") or ""
+        score = n.get("final_score") or 0
+        if score < 50:
+            continue
+        if bucket == "war_filler":
+            continue
+        if bucket == "hard_war":
+            if war >= 1:
+                continue
+            war += 1
+        if bucket == "civilian":
+            if civil >= 2:
+                continue
+            civil += 1
+        out.append(n)
+        if len(out) >= 3:
+            break
+    return out
 
 if __name__ == "__main__":
     top = get_top_news_for_brief(5)
