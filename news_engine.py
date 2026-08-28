@@ -9,10 +9,11 @@ import os
 PUBLISHED_FILE = "published_ids.json"
 
 TG_SOURCES = {
-    "truexanewsua": {"name": "Труха", "trust": 6.5, "bias": "civilian"},
-    "lachentyt": {"name": "Лачен", "trust": 6.5, "bias": "civilian"},
-    "advokat_prava": {"name": "Адвокат Права", "trust": 7.0, "bias": "tck"},
+    "lachentyt": {"name": "Лачен пише", "trust": 6.5, "bias": "civilian"},
     "vanek_nikolaev": {"name": "Миколаївський Ванек", "trust": 6.5, "bias": "civilian"},
+    "times_ukraina": {"name": "Times of Ukraine", "trust": 6.2, "bias": "civilian"},
+    "truexanewsua": {"name": "Труха Україна", "trust": 6.5, "bias": "civilian"},
+    "insiderUKR": {"name": "Інсайдер UA", "trust": 6.2, "bias": "civilian"},
 }
 
 CIVILIAN_KEYS = [
@@ -25,6 +26,59 @@ WAR_FILLER_KEYS = [
     "генштаб зведення", "за добу знешкоджено", "окупанти не полишають",
     "триває відсіч", "на купянському",
 ]
+
+def fetch_tg_channel_posts() -> list:
+    import hashlib
+    import re
+    import requests
+
+    headers = {"User-Agent": "Mozilla/5.0 ChitkoBot"}
+    out = []
+
+    for username, meta in TG_SOURCES.items():
+        try:
+            html = requests.get(
+                f"https://t.me/s/{username}",
+                headers=headers,
+                timeout=8,
+            ).text
+        except Exception as e:
+            print(f"TG {username}: {e}")
+            continue
+
+        chunks = re.split(r'class="tgme_widget_message_text', html)
+        for chunk in chunks[1:6]:
+            raw = re.sub(r"<br\s*/?>", "\n", chunk, flags=re.I)
+            text = re.sub(r"<[^>]+>", " ", raw)
+            text = re.sub(r"\s+", " ", text).strip()
+            if len(text) < 40:
+                continue
+
+            low = text.lower()
+            if not any(k in low for k in CIVILIAN_KEYS):
+                continue
+
+            title = text.split(".")[0].strip()[:140]
+            event_id = hashlib.md5(f"tg:{username}:{title[:80]}".encode()).hexdigest()
+            news = {
+                "event_id": event_id,
+                "title": title,
+                "title_original": title,
+                "title_chitko": title,
+                "text": text[:800],
+                "summary": text[:800],
+                "body": text[:800],
+                "link": f"https://t.me/{username}",
+                "source": meta.get("name") or username,
+                "source_name": meta.get("name") or username,
+                "image_url": None,
+                "final_score": 62.0,
+            }
+            news = apply_editorial_caps(news)
+            out.append(news)
+        print(f"TG {username}: kept {len(out)}")
+
+    return out
 
 def load_published_ids():
     if os.path.exists(PUBLISHED_FILE):
@@ -364,7 +418,6 @@ def select_for_publish(news_list: list, max_auto: int = 2) -> list:
 def fetch_and_score_news(limit: int = 40) -> list:
     import hashlib
     import feedparser
-    from datetime import datetime, timezone
 
     feeds = [
         ("Суспільне", "https://suspilne.media/rss/", 8.5),
@@ -378,14 +431,9 @@ def fetch_and_score_news(limit: int = 40) -> list:
 
     published = set()
     try:
-        published = set(load_published_ids() if "load_published_ids" in dir() else [])
+        published = set(load_published_ids() or [])
     except Exception:
         published = set()
-    try:
-        from news_engine import published_ids as _pub
-        published |= set(_pub or [])
-    except Exception:
-        pass
 
     out = []
     seen = set()
@@ -448,43 +496,14 @@ def fetch_and_score_news(limit: int = 40) -> list:
             news = apply_editorial_caps(news)
             out.append(news)
 
+    try:
+        out.extend(fetch_tg_channel_posts())
+    except Exception as e:
+        print(f"TG fetch: {e}")
+
     out.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
     print(f"FETCH scored={len(out)}")
     return out[:limit]
-
-    def is_similar(t1, t2):
-        s1 = set(t1.lower().split())
-        s2 = set(t2.lower().split())
-        if not s1 or not s2:
-            return False
-        return len(s1 & s2) / len(s1 | s2) > 0.55
-
-    final_news = []
-    for item in unique_news:
-        if item["event_id"] in published_ids:
-            continue
-
-        title = item.get("title_original", "")
-        is_dup = False
-
-        for existing in final_news:
-            if is_similar(title, existing.get("title_original", "")):
-                is_dup = True
-                break
-
-        if not is_dup:
-            for old_title in recent_titles:
-                if is_similar(title, old_title):
-                    if is_material_update(old_title, title):
-                        item["title_chitko"] = "ОНОВЛЕНО: " + title
-                    else:
-                        is_dup = True
-                    break
-
-        if not is_dup:
-            final_news.append(item)
-
-    return final_news
 
 def get_top_news_for_brief(count: int = 4) -> list:
     news = fetch_and_score_news()
