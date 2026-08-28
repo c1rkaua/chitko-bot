@@ -941,16 +941,7 @@ async def main():
         "interval",
         minutes=30
     )
-    scheduler.add_job(
-        scheduled_evening_digest,
-        CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv")
-    )
-
-    scheduler.add_job(
-        scheduled_air,
-        "interval",
-        seconds=20
-    )
+    # вечірній дайджест вимкнено, поки ловимо флуд
     scheduler.add_job(
         scheduled_air,
         "interval",
