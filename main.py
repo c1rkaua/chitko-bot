@@ -577,7 +577,7 @@ async def cmd_news(message: Message):
         save_published_ids(published_ids)
 
         recent = load_recent_titles()
-        recent.append(news.get("title_original", ""))
+        recent.append(news.get("title_chitko") or news.get("title_original") or news.get("title") or "")
         save_recent_titles(recent)
 
         auto_published += 1
@@ -738,7 +738,7 @@ async def approve_one(callback: CallbackQuery):
     save_published_ids(published_ids)
 
     recent = load_recent_titles()
-    recent.append(news.get("title_original", ""))
+    recent.append(news.get("title_chitko") or news.get("title_original") or news.get("title") or "")
     save_recent_titles(recent)
 
     pending_news.pop(event_id, None)
@@ -977,6 +977,47 @@ async def scheduled_threats():
         except Exception as e:
             print(f"THREAT send error: {e}")
 
+async def scheduled_air():
+    try:
+        data = process_air_cycle()
+    except Exception as e:
+        print(f"AIR err {e}")
+        return
+    if not data:
+        return
+    text = data.get("text") if isinstance(data, dict) else None
+    if not text:
+        try:
+            text = format_air_post(data)
+        except Exception:
+            return
+    if not text:
+        return
+    try:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+    except Exception as e:
+        print(f"AIR send {e}")
+
+async def scheduled_air():
+    try:
+        data = process_air_cycle()
+    except Exception as e:
+        print(f"AIR err {e}")
+        return
+    if not data:
+        return
+    text = data.get("text") if isinstance(data, dict) else None
+    if not text:
+        try:
+            text = format_air_post(data)
+        except Exception:
+            return
+    if not text:
+        return
+    try:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+    except Exception as e:
+        print(f"AIR send {e}")
             
 async def main():
     print("Я заработал")
