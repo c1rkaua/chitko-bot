@@ -832,36 +832,73 @@ async def scheduled_evening_digest():
     )
 
 async def send_news_to_channel(news: dict, formatted: str):
-    from aiogram.types import InputMediaPhoto
+    import os
+    import tempfile
+    import requests
+    from aiogram.types import FSInputFile, InputMediaPhoto
+
+    def download(url: str):
+        try:
+            r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+            if r.status_code != 200 or len(r.content) < 2000:
+                return None
+            fd, path = tempfile.mkstemp(suffix=".jpg")
+            os.write(fd, r.content)
+            os.close(fd)
+            return path
+        except Exception as e:
+            print(f"DL fail {e}")
+            return None
 
     photos = [u for u in (news.get("media_urls") or []) if u]
+    if not photos and news.get("image_url"):
+        photos = [news["image_url"]]
     video = news.get("video_url")
-    image_url = news.get("image_url")
+    paths = []
 
     try:
         if video:
-            await bot.send_video(
-                CHANNEL_ID, video=video, caption=formatted, parse_mode="HTML"
-            )
-            return
-        if len(photos) >= 2:
+            path = download(video)
+            if path:
+                paths.append(path)
+                await bot.send_video(
+                    CHANNEL_ID, video=FSInputFile(path), caption=formatted, parse_mode="HTML"
+                )
+                return
+
+        files = []
+        for url in photos[:4]:
+            path = download(url)
+            if path:
+                files.append(path)
+                paths.append(path)
+
+        if len(files) >= 2:
             media = [
-                InputMediaPhoto(media=photos[0], caption=formatted, parse_mode="HTML")
+                InputMediaPhoto(media=FSInputFile(files[0]), caption=formatted, parse_mode="HTML")
             ]
-            for url in photos[1:4]:
-                media.append(InputMediaPhoto(media=url))
+            for p in files[1:]:
+                media.append(InputMediaPhoto(media=FSInputFile(p)))
             await bot.send_media_group(CHANNEL_ID, media=media)
             print(f"SEND album {len(media)}")
             return
-        if image_url:
+
+        if len(files) == 1:
             await bot.send_photo(
-                CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML"
+                CHANNEL_ID, photo=FSInputFile(files[0]), caption=formatted, parse_mode="HTML"
             )
             return
+
         await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
     except Exception as e:
         print(f"SEND media fail: {e}")
         await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    finally:
+        for p in paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
@@ -907,7 +944,7 @@ async def scheduled_news():
         save_published_ids(published_ids)
 
         recent = load_recent_titles()
-        recent.append(news.get("title_original", ""))
+        recent.append(news.get("title_chitko") or news.get("title_original") or news.get("title") or "")
         save_recent_titles(recent)
 
     await bot.send_message(
@@ -917,23 +954,6 @@ async def scheduled_news():
         f"Авто: {len(to_publish)}\n"
         f"Время: {datetime.now().strftime('%H:%M')}",
     )
-
-async def scheduled_air():
-    decision = process_air_cycle()
-    if decision.get("action") != "PUBLISH":
-        return
-
-    text = format_air_post(decision)
-    try:
-        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-        await bot.send_message(
-            ADMIN_GROUP_ID,
-            f"Тривога опублікована.\n{decision.get('reason', '')}"
-        )
-        if decision.get("event_type") == "ALERT_END":
-            close_attack()
-    except Exception as e:
-        print(f"AIR send error: {e}")
 
 async def scheduled_threats():
     try:

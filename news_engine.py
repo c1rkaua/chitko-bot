@@ -40,6 +40,24 @@ LAST_TG_STATS = {
     "when": "",
 }
 
+def normalize_title(text: str) -> str:
+    import re
+    text = (text or "").lower()
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"[^\wа-яіїєґ]+", " ", text, flags=re.I)
+    return " ".join(text.split())
+
+def is_same_story(a: str, b: str) -> bool:
+    na, nb = normalize_title(a), normalize_title(b)
+    if not na or not nb:
+        return False
+    if na[:40] in nb or nb[:40] in na:
+        return True
+    sa, sb = set(na.split()), set(nb.split())
+    if not sa or not sb:
+        return False
+    return len(sa & sb) >= 5
+
 def extract_tg_media(chunk: str) -> dict:
     import re
 
@@ -588,7 +606,24 @@ def fetch_and_score_news(limit: int = 40) -> list:
 
 def get_top_news_for_brief(count: int = 4) -> list:
     news = fetch_and_score_news()
-    return news[:count]
+    recent = []
+    try:
+        recent = load_recent_titles() or []
+    except Exception:
+        recent = []
+
+    unique = []
+    seen_now = []
+    for item in news:
+        title = item.get("title_chitko") or item.get("title") or ""
+        if any(is_same_story(title, old) for old in recent + seen_now):
+            print(f"DEDUP skip: {title[:80]}")
+            continue
+        seen_now.append(title)
+        unique.append(item)
+
+    print(f"DEDUP {len(news)} -> {len(unique)}")
+    return unique[:count]
 
 # ====================== ТЕСТ ======================
 
