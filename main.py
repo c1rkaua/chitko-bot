@@ -12,6 +12,7 @@ from news_engine import (
     load_recent_titles,
     save_recent_titles,
     pick_cycle_news,
+    apply_watermark,
 )
 import asyncio
 import aiohttp
@@ -278,26 +279,6 @@ def pick_brief_headlines(items: list, limit: int = 3) -> list:
         if len(out) >= limit:
             break
     return out
-
-@dp.message(Command("digest"))
-async def cmd_digest(message: Message):
-    if message.chat.id != ADMIN_GROUP_ID:
-        return
-    try:
-        await message.answer("Збираю дайджест...")
-        text = await create_evening_digest()
-        cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
-        if os.path.exists(cover):
-            await message.answer_photo(
-                photo=FSInputFile(cover),
-                caption=text,
-                parse_mode="HTML",
-            )
-        else:
-            await message.answer(text, parse_mode="HTML")
-    except Exception as e:
-        await message.answer(f"Дайджест упав: {e}")
-        print(f"DIGEST error: {e}")
 
 def render_brief_card(rates: dict, fuel: dict, headlines: list, title_news: str = "ГОЛОВНЕ ЗА РАНОК") -> str:
     from datetime import datetime
@@ -590,29 +571,9 @@ async def cmd_news(message: Message):
 async def cmd_digest(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
         return
-    try:
-        await message.answer("Збираю дайджест...")
-        text = await create_evening_digest()
-        cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
-        if os.path.exists(cover):
-            await message.answer_photo(
-                photo=FSInputFile(cover),
-                caption=text,
-                parse_mode="HTML",
-            )
-        else:
-            await message.answer(text, parse_mode="HTML")
-    except Exception as e:
-        await message.answer(f"Дайджест упав: {e}")
-        print(f"DIGEST error: {e}")
-   
-
-@dp.message(Command("digest"))
-async def cmd_digest(message: Message):
-    if message.chat.id != ADMIN_GROUP_ID:
-        return
     await message.answer("Збираю вечірній дайджест...")
     await scheduled_evening_digest()
+
 
 @dp.message(Command("air"))
 async def cmd_air(message: Message):
@@ -823,12 +784,12 @@ async def send_news_to_channel(news: dict, formatted: str):
         print("SEND skip")
         return
 
-    def download(url: str):
+    def download(url: str, suffix=".jpg"):
         try:
             r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
             if r.status_code != 200 or len(r.content) < 2000:
                 return None
-            fd, path = tempfile.mkstemp(suffix=".jpg")
+            fd, path = tempfile.mkstemp(suffix=suffix)
             os.write(fd, r.content)
             os.close(fd)
             return path
@@ -836,18 +797,43 @@ async def send_news_to_channel(news: dict, formatted: str):
             print(f"DL fail {e}")
             return None
 
+    def watermark_file(path: str) -> str:
+        try:
+            fd, out = tempfile.mkstemp(suffix=".jpg")
+            os.close(fd)
+            result = apply_watermark(path, out)
+            return result or path
+        except Exception as e:
+            print(f"WM file fail {e}")
+            return path
+
     photos = [u for u in (news.get("media_urls") or []) if u]
     if not photos and news.get("image_url") and not is_bad_source_image(news.get("image_url")):
         photos = [news["image_url"]]
-
+    video = news.get("video_url")
     paths = []
+
     try:
+        if video:
+            vpath = download(video, suffix=".mp4")
+            if vpath:
+                paths.append(vpath)
+                await bot.send_video(
+                    CHANNEL_ID, video=FSInputFile(vpath), caption=formatted, parse_mode="HTML"
+                )
+                print("SEND video")
+                return
+
         files = []
         for url in photos[:4]:
             path = download(url)
-            if path:
-                files.append(path)
-                paths.append(path)
+            if not path:
+                continue
+            paths.append(path)
+            marked = watermark_file(path)
+            if marked != path:
+                paths.append(marked)
+            files.append(marked)
 
         if len(files) >= 2:
             media = [
@@ -985,20 +971,13 @@ async def main():
         scheduled_brief,
         CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv"),
     )
-    scheduler.add_job(
-        scheduled_news,
-        "interval",
-        minutes=30,
-    )
+    scheduler.add_job(scheduled_news, "interval", minutes=30)
     scheduler.add_job(
         scheduled_evening_digest,
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
     )
-    scheduler.add_job(
-        scheduled_air,
-        "interval",
-        seconds=20,
-    )
+    scheduler.add_job(scheduled_air, "interval", seconds=20)
+    scheduler.add_job(scheduled_threats, "interval", seconds=30)
 
     scheduler.start()
     print("Планувальник запущено")
