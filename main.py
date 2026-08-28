@@ -862,8 +862,30 @@ def pick_cycle_news(items: list) -> list:
     return out
 
 async def scheduled_news():
-    print("scheduled_news paused")
-    return
+    news_list = get_top_news_for_brief(12)
+    news_list = pick_cycle_news(news_list)
+    to_publish = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
+
+    sent = 0
+    for news in to_publish:
+        title = (news.get("title_chitko") or news.get("title") or "").strip()
+        if len(title) < 8:
+            continue
+        formatted = format_news_post(news)
+        if not formatted or "⚡️" not in formatted:
+            continue
+        await send_news_to_channel(news, formatted)
+        published_ids.add(news["event_id"])
+        save_published_ids(published_ids)
+        recent = load_recent_titles()
+        recent.append(title)
+        save_recent_titles(recent)
+        sent += 1
+
+    await bot.send_message(
+        ADMIN_GROUP_ID,
+        f"Проверил новости.\nКандидаты: {len(news_list)}\nАвто: {sent}\nВремя: {datetime.now().strftime('%H:%M')}",
+    )
 
 async def scheduled_threats():
     try:
@@ -909,11 +931,8 @@ async def scheduled_air():
 async def main():
     print("Я заработал")
 
-    scheduler.add_job(
-        scheduled_air,
-        "interval",
-        seconds=20,
-    )
+    scheduler.add_job(scheduled_air, "interval", seconds=20)
+    scheduler.add_job(scheduled_news, "interval", minutes=30)
 
     scheduler.start()
     print("Планувальник запущено")
