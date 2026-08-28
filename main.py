@@ -832,76 +832,36 @@ async def scheduled_evening_digest():
     )
 
 async def send_news_to_channel(news: dict, formatted: str):
-    import os
-    from aiogram.types import FSInputFile
+    from aiogram.types import InputMediaPhoto
 
-    video_url = news.get("video_url")
+    photos = [u for u in (news.get("media_urls") or []) if u]
+    video = news.get("video_url")
     image_url = news.get("image_url")
-    score = news.get("final_score", 0)
-
-    # Не беремо брендовані фото Суспільне тощо
-    if image_url and is_bad_source_image(image_url):
-        image_url = None
-
-    terminova_path = os.path.join(os.path.dirname(__file__), "assets", "terminova.jpg")
-    has_terminova = os.path.isfile(terminova_path)
 
     try:
-        if video_url:
+        if video:
             await bot.send_video(
-                CHANNEL_ID,
-                video=video_url,
-                caption=formatted,
-                parse_mode="HTML"
+                CHANNEL_ID, video=video, caption=formatted, parse_mode="HTML"
             )
             return
-
-        # Breaking без нормального фото → картка ТЕРМІНОВА
-        if score >= 90 and not image_url and has_terminova:
-            photo = FSInputFile(terminova_path)
-            await bot.send_photo(
-                CHANNEL_ID,
-                photo=photo,
-                caption=formatted,
-                parse_mode="HTML"
-            )
+        if len(photos) >= 2:
+            media = [
+                InputMediaPhoto(media=photos[0], caption=formatted, parse_mode="HTML")
+            ]
+            for url in photos[1:4]:
+                media.append(InputMediaPhoto(media=url))
+            await bot.send_media_group(CHANNEL_ID, media=media)
+            print(f"SEND album {len(media)}")
             return
-
         if image_url:
-            local_path = prepare_image_with_watermark(image_url)
-            if local_path:
-                photo = FSInputFile(local_path)
-                await bot.send_photo(
-                    CHANNEL_ID,
-                    photo=photo,
-                    caption=formatted,
-                    parse_mode="HTML"
-                )
-                try:
-                    os.unlink(local_path)
-                except Exception:
-                    pass
-                return
-
-            # Якщо download 403 — без фото
-            await bot.send_message(
-                CHANNEL_ID,
-                formatted,
-                parse_mode="HTML"
+            await bot.send_photo(
+                CHANNEL_ID, photo=image_url, caption=formatted, parse_mode="HTML"
             )
             return
-
-        await bot.send_message(
-            CHANNEL_ID,
-            formatted,
-            parse_mode="HTML"
-        )
-    except Exception:
-        await bot.send_message(
-            CHANNEL_ID,
-            formatted,
-            parse_mode="HTML"
-        )
+        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    except Exception as e:
+        print(f"SEND media fail: {e}")
+        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
 
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
