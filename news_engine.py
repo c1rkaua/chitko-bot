@@ -917,57 +917,69 @@ def apply_editorial_caps(news: dict) -> dict:
 
     civilian = any(k in t for k in CIVILIAN_KEYS)
     war_filler = any(k in t for k in WAR_FILLER_KEYS)
+    air_war = any(x in t for x in [
+        "шахед", "дрон", "балістик", "крилат", "ракет", "каб ", "ппо",
+        "shahed", "бпла",
+    ])
     hard_war = any(x in t for x in [
         "по києву", "по харков", "по одесі", "по запоріж", "по сумах",
         "масована атака", "балістик",
+    ]) and any(x in t for x in [
+        "поранен", "загинул", "влучан", "удар по", "приліт", "ранен", "погиб",
     ])
-    filler_geo = any(x in t for x in ["санду", "кишинів", "молдов", "захаров", "вірмен"])
-
-    if "suspilne" in source or "суспільне" in source:
-        if war_filler and not civilian and not hard_war:
-            score = min(score, 48)
-        elif not civilian and not hard_war:
-            score = min(score, 72)
+    filler_geo = any(x in t for x in [
+        "санду", "кишинів", "молдов", "захаров", "вірмен", "patriot",
+    ])
 
     if civilian:
         score = min(100, score + 14)
         news["bucket"] = "civilian"
     elif hard_war:
-        score = min(100, score + 10)
+        score = min(100, score + 8)
         news["bucket"] = "hard_war"
-    elif war_filler:
-        score = min(score, 52)
+    elif war_filler or (air_war and not civilian):
+        score = min(score, 49)
         news["bucket"] = "war_filler"
     else:
-        news["bucket"] = news.get("bucket") or "other"
+        news["bucket"] = "other"
 
-    if filler_geo and not civilian and not hard_war:
-        score = min(score, 50)
+    if "suspilne" in source or "суспільне" in source:
+        if news.get("bucket") == "war_filler":
+            score = min(score, 45)
+        elif news.get("bucket") == "other":
+            score = min(score, 68)
+
+    if filler_geo and news.get("bucket") != "civilian":
+        score = min(score, 48)
+        news["bucket"] = "war_filler"
 
     news["final_score"] = score
     return news
 
 def pick_cycle_news(items: list) -> list:
-    items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
-    out, civil, war = [], 0, 0
-    for n in items:
-        bucket = n.get("bucket") or ""
-        score = n.get("final_score") or 0
-        if score < 50:
-            continue
-        if bucket == "war_filler":
-            continue
-        if bucket == "hard_war":
-            if war >= 1:
-                continue
-            war += 1
-        if bucket == "civilian":
-            if civil >= 2:
-                continue
-            civil += 1
-        out.append(n)
-        if len(out) >= 3:
-            break
+    items = items or []
+    civil = [n for n in items if n.get("bucket") == "civilian" and (n.get("final_score") or 0) >= 55]
+    hard = [n for n in items if n.get("bucket") == "hard_war" and (n.get("final_score") or 0) >= 88]
+    other = [
+        n for n in items
+        if n.get("bucket") not in ("war_filler", "hard_war")
+        and n.get("bucket") != "civilian"
+        and (n.get("final_score") or 0) >= 70
+    ]
+
+    civil.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+    hard.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+    other.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
+
+    out = civil[:2]
+    if hard:
+        out.append(hard[0])
+    if len(out) < 2 and other:
+        out.append(other[0])
+
+    print(
+        f"PICK civil={len(civil)} hard={len(hard)} other={len(other)} out={len(out)}"
+    )
     return out
 
 if __name__ == "__main__":
