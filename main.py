@@ -727,52 +727,24 @@ async def scheduled_brief():
 async def scheduled_evening_digest():
     text = await create_evening_digest()
     cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
-    if os.path.exists(cover):
-        await bot.send_photo(
-            CHANNEL_ID,
-            photo=FSInputFile(cover),
-            caption=text,
-            parse_mode="HTML",
-        )
-    else:
-        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-
-    items = items[:5]
-    if not items:
+    try:
+        if os.path.exists(cover):
+            await bot.send_photo(
+                CHANNEL_ID,
+                photo=FSInputFile(cover),
+                caption=text,
+                parse_mode="HTML",
+            )
+        else:
+            await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
         await bot.send_message(
             ADMIN_GROUP_ID,
-            "Вечірній дайджест: немає достатньо якісних новин."
+            "Вечірній дайджест опубліковано в канал.",
         )
-        return
-
-    lines = []
-    for i, n in enumerate(items, 1):
-        title = n.get("title_chitko") or n.get("title_original", "")
-        title = ensure_punctuation(title.strip())
-        lines.append(f"{i}. {title}")
-
-    from datetime import datetime
-    try:
-        from zoneinfo import ZoneInfo
-        now = datetime.now(ZoneInfo("Europe/Kyiv"))
-    except Exception:
-        now = datetime.now()
-
-    date_str = now.strftime("%d.%m.%Y")
-
-    text = (
-        f"<b>ГОЛОВНЕ ЗА ДЕНЬ</b>\n"
-        f"{date_str}\n\n"
-        + "\n\n".join(lines)
-        + "\n\n<b>ЧІТКО. Коротко. По суті.</b>"
-    )
-
-    await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-    await bot.send_message(
-        ADMIN_GROUP_ID,
-        "Вечірній дайджест опубліковано в канал."
-    )
-
+    except Exception as e:
+        print(f"DIGEST send {e}")
+        await bot.send_message(ADMIN_GROUP_ID, f"Дайджест упав: {e}")
+        
 async def send_news_to_channel(news: dict, formatted: str):
     import os
     import tempfile
