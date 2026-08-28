@@ -878,26 +878,38 @@ async def send_news_to_channel(news: dict, formatted: str):
 
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
-    out, civil, war = [], 0, 0
+    civilian, war, politics, other = [], [], [], []
+
     for n in items:
         bucket = n.get("bucket") or ""
-        score = n.get("final_score") or 0
+        score = float(n.get("final_score") or 0)
         if score < 50:
             continue
         if bucket == "war_filler":
             continue
-        if bucket == "hard_war":
-            if war >= 1:
-                continue
-            war += 1
         if bucket == "civilian":
-            if civil >= 2:
-                continue
-            civil += 1
-        out.append(n)
-        if len(out) >= 3:
-            break
-    return out
+            civilian.append(n)
+        elif bucket == "hard_war":
+            war.append(n)
+        elif bucket in ("politics", "law"):
+            politics.append(n)
+        else:
+            other.append(n)
+
+    out = []
+    out.extend(civilian[:2])
+    if war:
+        out.append(war[0])
+    if politics:
+        out.append(politics[0])
+    if len(out) < 3 and other:
+        out.append(other[0])
+
+    print(
+        f"PICK civil={len(civilian[:2])} war={1 if war else 0} "
+        f"pol={1 if politics and politics[0] in out else 0} other={len(out)}"
+    )
+    return out[:3]
 
 async def scheduled_news():
     news_list = get_top_news_for_brief(12)
