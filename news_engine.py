@@ -32,29 +32,48 @@ def fetch_tg_channel_posts() -> list:
     import re
     import requests
 
-    headers = {"User-Agent": "Mozilla/5.0 ChitkoBot"}
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
     out = []
 
     for username, meta in TG_SOURCES.items():
+        kept = 0
+        html = ""
         try:
             html = requests.get(
                 f"https://t.me/s/{username}",
                 headers=headers,
-                timeout=8,
+                timeout=10,
             ).text
+            if "tgme_widget_message" not in html:
+                html = requests.get(
+                    f"https://r.jina.ai/http://t.me/s/{username}",
+                    headers=headers,
+                    timeout=15,
+                ).text
         except Exception as e:
             print(f"TG {username}: {e}")
             continue
 
-        chunks = re.split(r'class="tgme_widget_message_text', html)
-        for chunk in chunks[1:6]:
-            raw = re.sub(r"<br\s*/?>", "\n", chunk, flags=re.I)
-            text = re.sub(r"<[^>]+>", " ", raw)
+        texts = re.findall(
+            r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
+            html,
+            flags=re.I | re.S,
+        )
+        if not texts:
+            texts = re.findall(r"(?:^|\n)([^\n]{50,400})(?:\n|$)", html)
+
+        print(f"TG {username}: html={len(html)} chunks={len(texts)}")
+
+        for raw in texts[:8]:
+            text = re.sub(r"<br\s*/?>", "\n", raw, flags=re.I)
+            text = re.sub(r"<[^>]+>", " ", text)
             text = re.sub(r"\s+", " ", text).strip()
             if len(text) < 40:
                 continue
 
             low = text.lower()
+            if any(k in low for k in WAR_FILLER_KEYS):
+                continue
             if not any(k in low for k in CIVILIAN_KEYS):
                 continue
 
@@ -76,7 +95,9 @@ def fetch_tg_channel_posts() -> list:
             }
             news = apply_editorial_caps(news)
             out.append(news)
-        print(f"TG {username}: kept {len(out)}")
+            kept += 1
+
+        print(f"TG {username}: kept {kept}")
 
     return out
 
