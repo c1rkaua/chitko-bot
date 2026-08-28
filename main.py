@@ -931,8 +931,24 @@ async def scheduled_air():
 async def main():
     print("Я заработал")
 
-    scheduler.add_job(scheduled_air, "interval", seconds=20)
-    scheduler.add_job(scheduled_news, "interval", minutes=30)
+    scheduler.add_job(
+        scheduled_brief,
+        CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv"),
+    )
+    scheduler.add_job(
+        scheduled_news,
+        "interval",
+        minutes=30,
+    )
+    scheduler.add_job(
+        scheduled_evening_digest,
+        CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
+    )
+    scheduler.add_job(
+        scheduled_air,
+        "interval",
+        seconds=20,
+    )
 
     scheduler.start()
     print("Планувальник запущено")
