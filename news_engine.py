@@ -865,33 +865,27 @@ MEANING
         return empty
 
 def format_news_post(news: dict) -> str:
-    title = news.get("title_chitko", news.get("title_original", "")).strip()
-    text = news.get("text_chitko", news.get("summary", "")).strip()
+    title = (news.get("title_chitko") or news.get("title_original") or news.get("title") or "").strip()
+    body = (news.get("body_chitko") or news.get("text") or news.get("summary") or "").strip()
+    meaning = (news.get("meaning") or "").strip()
+    if meaning.lower() in ("", "skip", "none"):
+        meaning = ""
 
-    rewritten = rewrite_chitko_post(title, text, news.get("category", ""))
-    title = rewritten.get("title") or title
-    text = rewritten.get("body") or text
-    meaning = rewritten.get("meaning") or ""
-
-    text = text.strip()
-    while "\n\n\n" in text:
-        text = text.replace("\n\n\n", "\n\n")
-    if text and text[-1] not in ".!?":
-        text = text + "."
-
-    title_lower = title.lower()
-    if any(w in title_lower for w in ["ракет", "дрон", "удар", "обстріл", "вибух", "балістик", "шахед", "авіабомб"]):
-        emoji = "⚡️"
-    elif any(w in title_lower for w in ["тцк", "мобілізац", "повістк", "бусифікац", "рейд"]):
-        emoji = "⚠️"
-    elif any(w in title_lower for w in ["загибл", "поранен", "загинув", "загинула"]):
-        emoji = "🕯"
-    elif any(w in title_lower for w in ["енерго", "відключен", "світло", "блекаут"]):
-        emoji = "🔌"
+    import re
+    body = re.sub(r"\s+", " ", body).strip()
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", body) if p.strip()]
+    if len(parts) <= 2:
+        body_block = " ".join(parts)
     else:
-        emoji = "▪️"
+        mid = (len(parts) + 1) // 2
+        body_block = " ".join(parts[:mid]) + "\n\n" + " ".join(parts[mid:])
 
-    body = text
+    emoji = "⚡️"
+    lines = [f"<b>{emoji} {title}</b>", "", body_block]
+    if meaning:
+        lines += ["", meaning]
+    lines += ["", "<b>ЧІТКО</b>"]
+    return "\n".join(lines)
 
     if meaning:
         post = f"{emoji} <b>{title}</b>\n\n{body}\n\n{meaning}\n\n<b>ЧІТКО</b>"
