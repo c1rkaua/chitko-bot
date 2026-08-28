@@ -893,41 +893,18 @@ async def scheduled_air():
     except Exception as e:
         print(f"AIR err {e}")
         return
-    if not data:
+    if not isinstance(data, dict):
         return
-    text = data.get("text") if isinstance(data, dict) else None
-    if not text:
-        try:
-            text = format_air_post(data)
-        except Exception:
-            return
-    if not text:
+    if data.get("action") != "PUBLISH":
+        return
+    text = (data.get("text") or "").strip()
+    if len(text) < 20:
         return
     try:
         await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     except Exception as e:
         print(f"AIR send {e}")
 
-async def scheduled_air():
-    try:
-        data = process_air_cycle()
-    except Exception as e:
-        print(f"AIR err {e}")
-        return
-    if not data:
-        return
-    text = data.get("text") if isinstance(data, dict) else None
-    if not text:
-        try:
-            text = format_air_post(data)
-        except Exception:
-            return
-    if not text:
-        return
-    try:
-        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-    except Exception as e:
-        print(f"AIR send {e}")
             
 async def main():
     print("Я заработал")
