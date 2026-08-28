@@ -931,7 +931,13 @@ async def scheduled_air():
             
 async def main():
     print("Я заработал")
-    print("Jobs paused except polling")
+
+    scheduler.add_job(
+        scheduled_air,
+        "interval",
+        seconds=20,
+    )
+
     scheduler.start()
     print("Планувальник запущено")
     await dp.start_polling(bot)
