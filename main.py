@@ -562,6 +562,8 @@ async def cmd_news(message: Message):
     auto_published = 0
 
     for news in to_auto:
+        if not (news.get("title_chitko") or news.get("title") or "").strip():
+            continue
         if news.get("final_score", 0) >= 90 and news.get("source_url"):
             try:
                 full_text = fetch_article_text_sync(news["source_url"])
@@ -592,8 +594,8 @@ async def cmd_news(message: Message):
         pending_news[news["event_id"]] = news
         formatted = format_news_post(news)
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ APPROVED", callback_data=f"approve_one_{news['event_id']}"),
-            InlineKeyboardButton(text="❌ DECLINE", callback_data=f"skip_one_{news['event_id']}"),
+            InlineKeyboardButton(text="✅ Апрув", callback_data=f"approve_one_{news['event_id']}"),
+            InlineKeyboardButton(text="❌ Скіп", callback_data=f"skip_one_{news['event_id']}"),
         ]])
         await message.answer(
             f"<b>Score: {news.get('final_score')}</b>\n\n{formatted}",
@@ -837,6 +839,15 @@ async def send_news_to_channel(news: dict, formatted: str):
     import requests
     from aiogram.types import FSInputFile, InputMediaPhoto
 
+    clean = (formatted or "").replace("<b>", "").replace("</b>", "").strip()
+    if not clean or clean in ("ЧІТКО", "Чітко", "чітко"):
+        print("SEND skip empty footer")
+        return
+    title = (news.get("title_chitko") or news.get("title") or "").strip()
+    if not title:
+        print("SEND skip no title")
+        return
+
     def download(url: str):
         try:
             r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
@@ -900,6 +911,7 @@ async def send_news_to_channel(news: dict, formatted: str):
             except Exception:
                 pass
 
+
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
     out, civil, war = [], 0, 0
@@ -929,6 +941,8 @@ async def scheduled_news():
     to_publish = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
 
     for news in to_publish:
+        if not (news.get("title_chitko") or news.get("title") or "").strip():
+            continue
         if news.get("final_score", 0) >= 90 and news.get("source_url"):
             try:
                 full_text = fetch_article_text_sync(news["source_url"])
