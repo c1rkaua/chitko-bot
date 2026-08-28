@@ -983,17 +983,16 @@ def format_news_post(news: dict) -> str:
 
     title = (news.get("title_chitko") or news.get("title_original") or news.get("title") or "").strip()
     body = (news.get("body_chitko") or news.get("text_chitko") or news.get("text") or news.get("summary") or "").strip()
-    meaning = (news.get("meaning") or "").strip()
-    if meaning.lower() in ("", "skip", "none"):
-        meaning = ""
+    if len(title) < 8:
+        return ""
 
     body = re.sub(r"<[^>]+>", " ", body)
     body = re.sub(r"\s+", " ", body).strip()
     body = re.sub(r"Підписатися на Times of Ukraine.*$", "", body, flags=re.I).strip()
 
-    title_norm = re.sub(r"\W+", " ", title.lower()).strip()
-    body_norm = re.sub(r"\W+", " ", body.lower()).strip()
-    if title_norm and body_norm.startswith(title_norm):
+    tnorm = re.sub(r"\W+", " ", title.lower()).strip()
+    bnorm = re.sub(r"\W+", " ", body.lower()).strip()
+    if tnorm and bnorm.startswith(tnorm):
         body = body[len(title):].lstrip(" .—–-")
         body = re.sub(r"^\W+", "", body).strip()
 
@@ -1009,8 +1008,6 @@ def format_news_post(news: dict) -> str:
     lines = [f"<b>⚡️ {title}</b>"]
     if body_block:
         lines += ["", body_block]
-    if meaning:
-        lines += ["", meaning]
     lines += ["", "<b>ЧІТКО</b>"]
     return "\n".join(lines)
 
