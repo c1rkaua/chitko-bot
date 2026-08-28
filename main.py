@@ -982,7 +982,6 @@ async def main():
     scheduler.start()
     print("Планувальник запущено")
     await dp.start_polling(bot)
-    
 
 
 if __name__ == "__main__":
