@@ -835,16 +835,21 @@ async def scheduled_evening_digest():
 
 async def send_news_to_channel(news: dict, formatted: str):
     import os
+    import re
     import tempfile
     import requests
     from aiogram.types import FSInputFile, InputMediaPhoto
 
-    clean = (formatted or "").replace("<b>", "").replace("</b>", "").strip()
-    if not clean or clean in ("ЧІТКО", "Чітко", "чітко"):
-        print("SEND skip empty footer")
+    def is_thin(text: str) -> bool:
+        probe = re.sub(r"<[^>]+>", " ", text or "")
+        probe = probe.replace("⚡️", " ").replace("ЧІТКО", " ").replace("Чітко", " ").replace("чітко", " ")
+        probe = re.sub(r"\s+", " ", probe).strip()
+        return len(probe) < 12
+
+    if is_thin(formatted):
+        print("SEND skip thin")
         return
-    title = (news.get("title_chitko") or news.get("title") or "").strip()
-    if not title:
+    if not (news.get("title_chitko") or news.get("title") or "").strip():
         print("SEND skip no title")
         return
 
@@ -903,7 +908,8 @@ async def send_news_to_channel(news: dict, formatted: str):
         await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
     except Exception as e:
         print(f"SEND media fail: {e}")
-        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+        if not is_thin(formatted):
+            await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
     finally:
         for p in paths:
             try:
