@@ -44,19 +44,48 @@ def normalize_title(text: str) -> str:
     import re
     text = (text or "").lower()
     text = re.sub(r"<[^>]+>", " ", text)
+    repl = {
+        "унаслідок": "внаслідок",
+        "дівчинк": "дитин",
+        "хлопчик": "дитин",
+        "дитина": "дитин",
+        "дітей": "дитин",
+        "столичн": "київ",
+        "столиці": "київ",
+        "оболонськ": "оболон",
+        "безпілотник": "бпла",
+        "безпілотн": "бпла",
+        "дрона": "бпла",
+        "дронів": "бпла",
+        "дрон ": "бпла ",
+    }
+    for a, b in repl.items():
+        text = text.replace(a, b)
     text = re.sub(r"[^\wа-яіїєґ]+", " ", text, flags=re.I)
-    return " ".join(text.split())
+    stop = {
+        "в", "у", "на", "та", "і", "й", "по", "з", "із", "від", "для",
+        "що", "як", "це", "після", "через", "було", "була", "були",
+        "яка", "який", "які", "зазнав", "зазнала", "поранена", "поранену",
+    }
+    return " ".join(w for w in text.split() if w not in stop and len(w) > 1)
+
 
 def is_same_story(a: str, b: str) -> bool:
     na, nb = normalize_title(a), normalize_title(b)
     if not na or not nb:
         return False
-    if na[:40] in nb or nb[:40] in na:
+    if na[:36] in nb or nb[:36] in na:
         return True
     sa, sb = set(na.split()), set(nb.split())
     if not sa or not sb:
         return False
-    return len(sa & sb) >= 5
+    inter = sa & sb
+    if len(inter) >= 4:
+        return True
+    keys = {"померл", "загибл", "бпла", "оболон", "київ", "дитин", "дворіч"}
+    hit_a = {k for k in keys if any(k in w for w in sa)}
+    hit_b = {k for k in keys if any(k in w for w in sb)}
+    return len(hit_a & hit_b) >= 3
 
 def extract_tg_media(chunk: str) -> dict:
     import re
