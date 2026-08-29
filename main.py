@@ -980,6 +980,7 @@ def cluster_unique(items: list) -> list:
             continue
         seen.append(title)
         out.append(n)
+    print(f"CLUSTER kept {len(out)}")
     return out
 
 LAST_THREAT = {}
