@@ -136,17 +136,25 @@ REPEAT_ALERT = [
 ]
 
 
+_ALERT_CACHE = {"at": 0.0, "data": {"kyiv": False, "oblast": False}}
+
 def fetch_official_alerts() -> dict:
+    import time
+
+    now = time.time()
+    if now - _ALERT_CACHE["at"] < 15:
+        return dict(_ALERT_CACHE["data"])
+
     result = {"kyiv": False, "oblast": False}
     try:
-        resp = requests.get("https://neptun.in.ua/api/v1/alerts", timeout=8)
+        resp = requests.get("https://neptun.in.ua/api/v1/alerts", timeout=5)
         if resp.status_code != 200:
             print(f"AIR API status {resp.status_code}")
-            return result
+            return dict(_ALERT_CACHE["data"]) if _ALERT_CACHE["at"] else result
         data = resp.json()
     except Exception as e:
         print(f"AIR API error: {e}")
-        return result
+        return dict(_ALERT_CACHE["data"]) if _ALERT_CACHE["at"] else result
 
     items = (data.get("oblasts") or []) + (data.get("raions") or [])
     for item in items:
@@ -154,15 +162,16 @@ def fetch_official_alerts() -> dict:
         oblast = (item.get("oblast") or "").strip().lower()
         key = (item.get("key") or "").strip().lower()
         blob = f"{name} {oblast} {key}"
-
         if name in ("київ", "м. київ", "місто київ") or key in ("kyiv", "m.kyiv", "kyiv_city"):
             result["kyiv"] = True
         elif "київська область" in blob or key.startswith("kyivska"):
             if name not in ("київ", "м. київ"):
                 result["oblast"] = True
 
+    _ALERT_CACHE["at"] = now
+    _ALERT_CACHE["data"] = result
     print(f"AIR status kyiv={result['kyiv']} oblast={result['oblast']}")
-    return result
+    return dict(result)
 
 BOTH_CLEAR_DAY = [
     "Відбій у Києві.\n\nНебо чисте.",

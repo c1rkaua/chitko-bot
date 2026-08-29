@@ -1009,7 +1009,6 @@ async def scheduled_threats():
         return
 
     if last_end and now - last_end < 180:
-        print("THREAT skip: just all-clear")
         return
 
     try:
@@ -1029,6 +1028,8 @@ async def scheduled_threats():
         key = "Київ"
         slot = LAST_THREAT.setdefault(key, {"msg_id": None, "at": 0.0, "text": ""})
         if slot.get("text") == text:
+            continue
+        if slot.get("msg_id") and now - slot.get("at", 0) < 120:
             continue
 
         if slot.get("msg_id"):
