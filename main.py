@@ -928,19 +928,24 @@ async def scheduled_news():
 LAST_THREAT = {}
 LAST_AUTO_NEWS = {"at": 0.0}
 
-
 def format_threat_now(result: dict) -> str:
     from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI
 
     district = result.get("district") or "Київ"
     totals = result.get("totals_now") or result.get("totals") or {}
     hints = result.get("hints") or []
+    hints_blob = " ".join(str(h) for h in hints).lower()
+    allow_missile = any(
+        w in hints_blob for w in ("ракет", "баліст", "кінжал", "іскандер")
+    )
     lines = []
     for t in (
         "UAV", "ISKANDER", "KINZHAL", "ZIRCON",
         "X101", "X22", "ORESHNIK", "HYPER", "AERO",
         "BALLISTIC", "CRUISE", "UNKNOWN",
     ):
+        if t in ("CRUISE", "BALLISTIC", "ISKANDER", "KINZHAL", "X101", "X22", "ZIRCON", "ORESHNIK", "HYPER") and not allow_missile:
+            continue
         n = int(totals.get(t) or 0)
         if n <= 0:
             continue
@@ -966,7 +971,6 @@ def format_threat_now(result: dict) -> str:
         + "\nПройдіть в укриття.\n\n"
         f"<b>ЧІТКО</b>"
     )
-
 
 async def scheduled_threats():
     import time
