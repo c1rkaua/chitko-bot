@@ -138,6 +138,8 @@ REPEAT_ALERT = [
 
 _ALERT_CACHE = {"at": 0.0, "data": {"kyiv": False, "oblast": False}}
 
+_ALERT_CACHE = {"at": 0.0, "data": {"kyiv": False, "oblast": False}, "kyiv_off": 0}
+
 def fetch_official_alerts() -> dict:
     import time
 
@@ -167,6 +169,15 @@ def fetch_official_alerts() -> dict:
         elif "київська область" in blob or key.startswith("kyivska"):
             if name not in ("київ", "м. київ"):
                 result["oblast"] = True
+
+    prev = _ALERT_CACHE["data"]
+    if prev.get("kyiv") and not result["kyiv"]:
+        _ALERT_CACHE["kyiv_off"] = int(_ALERT_CACHE.get("kyiv_off") or 0) + 1
+        if _ALERT_CACHE["kyiv_off"] < 2:
+            print("AIR hold Kyiv ON (one miss)")
+            result["kyiv"] = True
+    else:
+        _ALERT_CACHE["kyiv_off"] = 0
 
     _ALERT_CACHE["at"] = now
     _ALERT_CACHE["data"] = result
