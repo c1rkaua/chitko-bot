@@ -880,12 +880,36 @@ def pick_cycle_news(items: list) -> list:
     )
     return out[:3]
 
+
+
+def cluster_unique(items: list) -> list:
+    from news_engine import is_same_story, load_recent_titles
+
+    seen = list(LAST_PUB_TITLES)
+    try:
+        seen.extend(load_recent_titles() or [])
+    except Exception:
+        pass
+    out = []
+    for n in items:
+        title = (n.get("title_chitko") or n.get("title") or "").strip()
+        if len(title) < 8:
+            continue
+        if any(is_same_story(title, old) for old in seen):
+            print(f"CLUSTER skip: {title[:80]}")
+            continue
+        seen.append(title)
+        out.append(n)
+    return out
+
+
 async def scheduled_news():
     import time
     from news_engine import is_breaking, is_same_story, prepare_chitko_news
 
     news_list = get_top_news_for_brief(12)
     news_list = pick_cycle_news(news_list)
+    news_list = cluster_unique(news_list)
     now = time.time()
     sent = 0
 
@@ -937,6 +961,26 @@ async def scheduled_news():
         )
     except Exception:
         pass
+
+def cluster_unique(items: list) -> list:
+    from news_engine import is_same_story, load_recent_titles
+
+    seen = list(LAST_PUB_TITLES)
+    try:
+        seen.extend(load_recent_titles() or [])
+    except Exception:
+        pass
+    out = []
+    for n in items:
+        title = (n.get("title_chitko") or n.get("title") or "").strip()
+        if len(title) < 8:
+            continue
+        if any(is_same_story(title, old) for old in seen):
+            print(f"CLUSTER skip: {title[:80]}")
+            continue
+        seen.append(title)
+        out.append(n)
+    return out
 
 LAST_THREAT = {}
 LAST_AUTO_NEWS = {"at": 0.0}
@@ -1128,8 +1172,8 @@ async def main():
         scheduled_evening_digest,
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
     )
-    scheduler.add_job(scheduled_air, "interval", seconds=20)
-    scheduler.add_job(scheduled_threats, "interval", seconds=30)
+    scheduler.add_job(scheduled_air, "interval", seconds=30)
+    scheduler.add_job(scheduled_threats, "interval", seconds=60)
 
     scheduler.start()
     print("Планувальник запущено")
