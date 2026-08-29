@@ -906,14 +906,14 @@ async def scheduled_news():
         f"Проверил новости.\nКандидаты: {len(news_list)}\nАвто: {sent}\nВремя: {datetime.now().strftime('%H:%M')}",
     )
 
-LAST_THREAT = {"sig": "", "at": 0.0, "msg_id": None}
+LAST_THREAT = {}
 
 
 def format_threat_now(result: dict) -> str:
-    from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI, _direction
+    from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI
 
-    totals = result.get("totals") or {}
-    target = "Київ"
+    district = result.get("district") or "Київ"
+    totals = result.get("totals_now") or result.get("totals") or {}
     lines = []
     for t in (
         "UAV", "ISKANDER", "KINZHAL", "ZIRCON",
@@ -928,13 +928,11 @@ def format_threat_now(result: dict) -> str:
         lines.append(f"{emoji} {n} {name}")
     if not lines:
         return ""
-    if result.get("action") == "PUBLISH":
-        head = "🚨 <b>Повітряна загроза</b> 🚨"
-    else:
-        head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
+    head = "🚨 <b>Повітряна загроза</b> 🚨" if result.get("action") == "PUBLISH" else "⚠️ <b>Оновлення щодо загрози</b>"
+    where = f"район {district}" if district != "Київ" else "Київ (район не вказано)"
     return (
         f"{head}\n\n"
-        f"Станом на зараз {_direction(target)}:\n"
+        f"{where}. Станом на зараз:\n"
         + "\n".join(lines)
         + "\n\nПройдіть в укриття.\n\n"
         f"<b>ЧІТКО</b>"
@@ -957,36 +955,33 @@ async def scheduled_threats():
         text = format_threat_now(result)
         if not text:
             continue
+        key = result.get("district") or "Київ"
+        slot = LAST_THREAT.setdefault(key, {"msg_id": None, "at": 0.0})
 
-        if action == "UPDATE" and LAST_THREAT.get("msg_id"):
+        if slot.get("msg_id"):
             try:
                 await bot.edit_message_text(
                     chat_id=CHANNEL_ID,
-                    message_id=LAST_THREAT["msg_id"],
+                    message_id=slot["msg_id"],
                     text=text,
                     parse_mode="HTML",
                 )
-                LAST_THREAT["at"] = now
-                LAST_THREAT["sig"] = text
-                print("THREAT edited")
+                slot["at"] = now
+                print(f"THREAT edited {key}")
                 continue
             except Exception as e:
-                print(f"THREAT edit fail {e}")
+                print(f"THREAT edit fail {key}: {e}")
 
         try:
             sent = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-            LAST_THREAT["msg_id"] = sent.message_id
-            LAST_THREAT["at"] = now
-            LAST_THREAT["sig"] = text
+            slot["msg_id"] = sent.message_id
+            slot["at"] = now
         except Exception as e:
             print(f"THREAT send error: {e}")
             continue
 
         if action == "PUBLISH":
-            await bot.send_message(
-                ADMIN_GROUP_ID,
-                f"Атака авто: {action}",
-            )
+            await bot.send_message(ADMIN_GROUP_ID, f"Атака авто: {key}")
 
 async def scheduled_monitor():
     import time

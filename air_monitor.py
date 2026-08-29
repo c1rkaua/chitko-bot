@@ -88,33 +88,42 @@ def poll_new_targets() -> list:
     from air_attack import ingest_combo
 
     objects = fetch_live_objects()
-    kyiv_now = [obj for obj in objects if _is_kyiv(obj)]
+    kyiv_now = [obj for obj in objects if _is_kyiv_city(obj)]
 
-    counts = {}
+    by_district = {}
     for obj in kyiv_now:
+        blob = " ".join([
+            str(obj.get("title") or ""),
+            str(obj.get("name") or ""),
+            str(obj.get("to_city") or ""),
+        ])
+        names = detect_districts(blob)
+        label = names[0] if names else "Київ"
         t = _map_type(obj)
-        counts[t] = counts.get(t, 0) + 1
+        n = int(obj.get("amount") or 1)
+        slot = by_district.setdefault(label, {})
+        slot[t] = slot.get(t, 0) + max(n, 1)
 
     state = load_seen()
-    last_counts = {}
-    if isinstance(state, dict) and "counts" in state:
-        last_counts = state.get("counts") or {}
-    elif isinstance(state, set):
-        last_counts = {}
+    last = (state.get("by_district") if isinstance(state, dict) else None) or {}
+    out = []
+    for label, counts in by_district.items():
+        prev = last.get(label) or {}
+        buckets = {}
+        for t, n in counts.items():
+            delta = n - int(prev.get(t) or 0)
+            if delta > 0:
+                buckets[t] = delta
+        if not buckets:
+            continue
+        result = ingest_combo(buckets, "Київ")
+        if isinstance(result, dict):
+            result["district"] = label
+            result["totals_now"] = counts
+            out.append(result)
 
-    buckets = {}
-    for t, n in counts.items():
-        prev = int(last_counts.get(t) or 0)
-        delta = n - prev
-        if delta > 0:
-            buckets[t] = delta
-
-    save_seen({"counts": counts})
-
-    if not buckets:
-        return []
-    
-    return [ingest_combo(buckets, "Київ")]
+    save_seen({"by_district": by_district, "counts": {}, "districts": list(by_district.keys())})
+    return out
 
 MONITOR_LAST = {"sig": "", "at": 0.0}
 
