@@ -1163,7 +1163,14 @@ async def scheduled_air():
             
 async def main():
     print("Я заработал")
-
+    try:
+        from news_engine import load_recent_titles
+        loaded = load_recent_titles() or []
+        LAST_PUB_TITLES.clear()
+        LAST_PUB_TITLES.extend(loaded[-80:])
+        print(f"SEED titles {len(LAST_PUB_TITLES)}")
+    except Exception as e:
+        print(f"SEED titles fail {e}")
     scheduler.add_job(
         scheduled_brief,
         CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv"),
