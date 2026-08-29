@@ -87,6 +87,26 @@ def is_same_story(a: str, b: str) -> bool:
     hit_b = {k for k in keys if any(k in w for w in sb)}
     return len(hit_a & hit_b) >= 3
 
+def is_breaking(news: dict) -> bool:
+    score = float(news.get("final_score") or 0)
+    blob = " ".join([
+        news.get("title_chitko") or "",
+        news.get("title") or "",
+        news.get("text") or "",
+        news.get("body") or "",
+    ]).lower()
+    keys = [
+        "загибл", "померл", "вбито", "загинула",
+        "удар по києв", "приліт", "попадання",
+        "вибух у києв", "вибухи в києв",
+        "дворіч", "дитин", "школяр",
+        "масована атака", "балістик",
+        "ДТП", 
+    ]
+    if score >= 88:
+        return True
+    return any(k in blob for k in keys)
+
 def extract_tg_media(chunk: str) -> dict:
     import re
 

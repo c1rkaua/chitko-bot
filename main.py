@@ -881,18 +881,31 @@ def pick_cycle_news(items: list) -> list:
     return out[:3]
 
 async def scheduled_news():
+    import time
+    from news_engine import is_breaking
+
     news_list = get_top_news_for_brief(12)
     news_list = pick_cycle_news(news_list)
-    to_publish = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
-
+    now = time.time()
     sent = 0
-    for news in to_publish:
+
+    for news in news_list:
+        score = float(news.get("final_score") or 0)
+        if score < 60:
+            continue
         title = (news.get("title_chitko") or news.get("title") or "").strip()
         if len(title) < 8:
             continue
         formatted = format_news_post(news)
         if not formatted or "⚡️" not in formatted:
             continue
+
+        breaking = is_breaking(news)
+        if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
+            continue
+        if not breaking and sent >= 1:
+            continue
+
         await send_news_to_channel(news, formatted)
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
@@ -900,13 +913,20 @@ async def scheduled_news():
         recent.append(title)
         save_recent_titles(recent)
         sent += 1
+        if not breaking:
+            LAST_AUTO_NEWS["at"] = now
+            break
 
-    await bot.send_message(
-        ADMIN_GROUP_ID,
-        f"Проверил новости.\nКандидаты: {len(news_list)}\nАвто: {sent}\nВремя: {datetime.now().strftime('%H:%M')}",
-    )
+    try:
+        await bot.send_message(
+            ADMIN_GROUP_ID,
+            f"Цикл новин.\nКандидати: {len(news_list)}\nАвто: {sent}",
+        )
+    except Exception:
+        pass
 
 LAST_THREAT = {}
+LAST_AUTO_NEWS = {"at": 0.0}
 
 
 def format_threat_now(result: dict) -> str:
@@ -1049,7 +1069,7 @@ async def main():
         scheduled_brief,
         CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv"),
     )
-    scheduler.add_job(scheduled_news, "interval", minutes=30)
+    scheduler.add_job(scheduled_news, "interval", minutes=5)
     scheduler.add_job(
         scheduled_evening_digest,
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
