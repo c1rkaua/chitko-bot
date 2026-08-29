@@ -950,11 +950,11 @@ def rewrite_chitko_post(title: str, body: str, category: str = "") -> dict:
     import requests
     import re
 
-    empty = {"title": title.strip(), "body": body.strip(), "meaning": ""}
+    fail = {"title": "", "body": "", "meaning": "", "ok": False}
     api_key = os.getenv("XAI_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not api_key:
         print("LLM rewrite: key=NO")
-        return empty
+        return fail
 
     use_xai = bool(os.getenv("XAI_API_KEY"))
     url = "https://api.x.ai/v1/chat/completions" if use_xai else "https://api.openai.com/v1/chat/completions"
@@ -999,7 +999,7 @@ MEANING: одне речення або SKIP
         print(f"LLM rewrite HTTP {resp.status_code}")
         if resp.status_code != 200:
             print(f"LLM rewrite body: {resp.text[:300]}")
-            return empty
+            return fail
 
         raw = (
             resp.json()
@@ -1009,6 +1009,8 @@ MEANING: одне речення або SKIP
             .strip()
         )
         print(f"LLM rewrite text: {raw[:180]}")
+        if raw.strip().upper().startswith("SKIP"):
+            return fail
 
         def grab(tag):
             m = re.search(
@@ -1035,14 +1037,14 @@ MEANING: одне речення або SKIP
         if not meaning or meaning.upper().startswith("SKIP"):
             meaning = ""
 
-        new_title = (new_title or title).split("\n")[0].strip(" .")
+        new_title = (new_title or "").split("\n")[0].strip(" .")
         new_body = (new_body or "").strip()
-        if not new_body:
-            return empty
-        return {"title": new_title, "body": new_body, "meaning": meaning}
+        if not new_title or not new_body:
+            return fail
+        return {"title": new_title, "body": new_body, "meaning": meaning, "ok": True}
     except Exception as e:
         print(f"LLM rewrite exception: {e}")
-        return empty
+        return fail
 
 def prepare_chitko_news(news: dict):
     title = (news.get("title_chitko") or news.get("title") or "").strip()
@@ -1050,18 +1052,19 @@ def prepare_chitko_news(news: dict):
     rew = rewrite_chitko_post(title, body, news.get("bucket") or "")
     new_title = (rew.get("title") or "").strip()
     new_body = (rew.get("body") or "").strip()
-    blob = f"{new_title} {new_body}".upper()
-    if not new_title or "SKIP" in blob[:20]:
+    blob = f"{new_title}\n{new_body}".upper()
+    if rew.get("ok") is False:
         print(f"REWRITE skip: {title[:80]}")
         return None
-    if new_title == title and new_body == body:
-        print(f"REWRITE raw: {title[:80]}")
+    if not new_title or not new_body or blob.strip().startswith("SKIP"):
+        print(f"REWRITE skip: {title[:80]}")
         return None
     news["title_chitko"] = new_title
     news["title"] = new_title
     news["text"] = new_body
     news["body"] = new_body
     news["rewritten"] = True
+    print(f"REWRITE ok: {new_title[:80]}")
     return news
 
 def format_news_post(news: dict) -> str:
