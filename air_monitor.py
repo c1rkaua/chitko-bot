@@ -6,10 +6,6 @@ from air_attack import ingest_targets
 
 SEEN_FILE = "air_seen_ids.json"
 
-KYIV_MARKERS = [
-    "kyiv", "київ", "киев", "київщин", "бровар", "вишгород",
-    "ірпін", "буч", "фастів", "біла церк",
-]
 
 def load_seen():
     if not os.path.exists(SEEN_FILE):
@@ -28,14 +24,28 @@ def save_seen(data):
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f)
 
-def _is_kyiv(obj: dict) -> bool:
+def _is_kyiv_city(obj: dict) -> bool:
     city = " ".join([
         str(obj.get("to_city") or ""),
         str(obj.get("to") or ""),
         str(obj.get("city") or ""),
-    ]).lower()
-    return "kyiv" in city or "київ" in city or "киев" in city
+    ]).lower().replace("м.", " ").strip()
+    if "област" in city or "oblast" in city or "київщин" in city or "киевщин" in city:
+        return False
+    return (
+        city in ("kyiv", "київ", "киев")
+        or city.startswith("kyiv")
+        or city.startswith("київ")
+        or city.startswith("киев")
+    )
 
+def detect_districts(text: str) -> list:
+    low = (text or "").lower()
+    found = []
+    for key, name in KYIV_DISTRICTS:
+        if key in low and name not in found:
+            found.append(name)
+    return found
 
 def _map_type(obj: dict) -> str:
     kind = str(obj.get("kind") or obj.get("subkind") or "").lower()
@@ -127,17 +137,43 @@ def poll_new_targets() -> list:
 
 MONITOR_LAST = {"sig": "", "at": 0.0}
 
-KYIV_MONITOR = [
-    "київ", "киев", "київщин", "киевщин",
-    "троєщин", "оболон", "дарниц", "дарницьк",
-    "святошин", "печерськ", "поділ", "голосіїв",
-    "солом'ян", "солом’ян", "деснян",
-    "лівобереж", "борщаг", "виноградар",
-    "вишгород", "бровар", "ірпін", "буч",
-    "фастів", "біла церк", "погреб", "переяслав",
-    "славутич", "васильків",
+KYIV_DISTRICTS = [
+    ("троєщин", "Троєщина"),
+    ("оболон", "Оболонь"),
+    ("дарниц", "Дарниця"),
+    ("дарницьк", "Дарницький"),
+    ("святошин", "Святошин"),
+    ("печерськ", "Печерськ"),
+    ("поділ", "Поділ"),
+    ("голосіїв", "Голосіїв"),
+    ("солом'ян", "Солом'янка"),
+    ("солом’ян", "Солом'янка"),
+    ("деснян", "Деснянський"),
+    ("лівобереж", "Лівобережний"),
+    ("борщаг", "Борщагівка"),
+    ("виноградар", "Виноградар"),
+    ("позняк", "Позняки"),
+    ("осокорк", "Осокорки"),
+    ("харьківськ", "Харківський масив"),
+    ("харківськ", "Харківський масив"),
+    ("відрадн", "Відрадний"),
+    ("нивк", "Нивки"),
+    ("сирець", "Сирець"),
+    ("куренів", "Куренівка"),
+    ("теремк", "Теремки"),
+    ("білич", "Біличі"),
+    ("академміст", "Академмістечко"),
+    ("мінськ", "Мінський масив"),
 ]
 
+KYIV_MONITOR = [
+    "київ", "kyiv", "киев",
+    "троєщин", "оболон", "дарниц", "святошин",
+    "печерськ", "поділ", "голосіїв", "солом",
+    "деснян", "лівобереж", "борщаг", "виноградар",
+    "позняк", "осокорк", "нивк", "сирець",
+    "куренів", "теремк", "білич", "академміст",
+]
 
 def fetch_monitor_kyiv() -> str:
     import re
