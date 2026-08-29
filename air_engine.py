@@ -201,104 +201,43 @@ BOTH_CLEAR_NIGHT = [
 ]
 
 def decide_alert_action(current: dict, state: dict) -> dict:
-    kyiv_was = state.get("kyiv_alert", False)
-    obl_was = state.get("oblast_alert", False)
-    kyiv_now = current.get("kyiv", False)
-    obl_now = False
+    kyiv_was = bool(state.get("kyiv_alert", False))
+    kyiv_now = bool(current.get("kyiv", False))
     kyiv_dur = _fmt_duration(state.get("kyiv_since") or 0)
-    obl_dur = _fmt_duration(state.get("oblast_since") or 0)
     repeat = _minutes_since_end(state) <= 90
-
-    def with_dur(text: str, extra: str = "") -> str:
-        if extra:
-            return text + "\n\n" + extra
-        return text
-
-    if (not kyiv_now) and obl_now and not state.get("kyiv_end_sent"):
-        extra = f"У Києві тривога тривала {kyiv_dur}." if kyiv_dur else ""
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END_KYIV",
-            "title": "🟢 Відбій у Києві",
-            "text": with_dur(random.choice(KYIV_OFF_OBLAST_ON), extra),
-            "reason": "Відбій у Києві, область ще під сиреною.",
-        }
-
-    if (not obl_now) and kyiv_now and not state.get("oblast_end_sent"):
-        extra = f"В області тривога тривала {obl_dur}." if obl_dur else ""
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END_OBLAST",
-            "title": "🟢 Відбій у Київській області",
-            "text": with_dur(random.choice(OBLAST_OFF_KYIV_ON), extra),
-            "reason": "Відбій в області, Київ ще під сиреною.",
-        }
-
-    if (kyiv_was or obl_was) and (not kyiv_now) and (not obl_now):
-        bits = []
-        if kyiv_dur:
-            bits.append(f"Київ — {kyiv_dur}.")
-        if obl_dur:
-            bits.append(f"Область — {obl_dur}.")
-        pool = BOTH_CLEAR_NIGHT if _is_night() else BOTH_CLEAR_DAY
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_END",
-            "title": "🟢 Відбій повітряної тривоги",
-            "text": with_dur(random.choice(pool), " ".join(bits)),
-            "reason": "Повний відбій.",
-        }
 
     if kyiv_now and not kyiv_was:
         if repeat:
-            where = "в Києві та Київській області" if obl_now else "в Києві"
-            text = (
-                f"{random.choice(REPEAT_ALERT)}\n\n"
-                "Пройдіть в укриття."
-            )
-            title = "🚨 Повторна повітряна тривога"
-        elif obl_now:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Києві та Київській області.\n\nПройдіть в укриття."
-        else:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Києві.\n\nПройдіть в укриття."
+            return {
+                "action": "PUBLISH",
+                "event_type": "ALERT_START",
+                "title": "🚨 Повторна повітряна тривога",
+                "text": f"{random.choice(REPEAT_ALERT)}\n\nПройдіть в укриття.",
+                "reason": "repeat Kyiv",
+            }
         return {
             "action": "PUBLISH",
             "event_type": "ALERT_START",
-            "title": title,
-            "text": text,
-            "reason": "Старт по Києву.",
+            "title": "🚨 Повітряна тривога",
+            "text": "Оголошено повітряну тривогу в Києві.\n\nПройдіть в укриття.",
+            "reason": "start Kyiv",
         }
 
-    if obl_now and not obl_was and not kyiv_now:
-        if repeat:
-            text = (
-                f"{random.choice(REPEAT_ALERT)}\n\n"
-                "Стежимо за Києвом."
-            )
-            title = "🚨 Повторна повітряна тривога"
-        else:
-            title = "🚨 Повітряна тривога"
-            text = "Оголошено повітряну тривогу в Київській області.\n\nСтежимо за Києвом."
+    if (not kyiv_now) and kyiv_was and not state.get("kyiv_end_sent"):
+        extra = f"У Києві тривога тривала {kyiv_dur}." if kyiv_dur else ""
+        pool = BOTH_CLEAR_NIGHT if _is_night() else BOTH_CLEAR_DAY
+        text = random.choice(pool)
+        if extra:
+            text = text + "\n\n" + extra
         return {
             "action": "PUBLISH",
-            "event_type": "ALERT_START",
-            "title": title,
+            "event_type": "ALERT_END",
+            "title": "🟢 Відбій у Києві",
             "text": text,
-            "reason": "Старт по області.",
+            "reason": "end Kyiv",
         }
 
-    if kyiv_now and not kyiv_was and obl_was:
-        return {
-            "action": "PUBLISH",
-            "event_type": "ALERT_UPDATE",
-            "title": "⚠️ Оновлення щодо повітряної загрози",
-            "text": "Тривогу оголошено також у Києві.\n\nПройдіть в укриття.",
-            "reason": "Київ підключився.",
-        }
-
-    return {"action": "IGNORE", "reason": "Статус не змінився."}
+    return {"action": "IGNORE", "reason": "no change"}
 
 def format_air_post(decision: dict) -> str:
     import re
@@ -317,8 +256,6 @@ def format_air_post(decision: dict) -> str:
         line = "⚠️ <b>Оновлення щодо тривоги</b>⚠️"
     elif event == "ALERT_END_KYIV":
         line = "🟢 <b>Відбій у Києві</b>🟢"
-    elif event == "ALERT_END_OBLAST":
-        line = "🟢 <b>Відбій у Київській області</b>🟢"
     elif event == "ALERT_END":
         mark = "🌙" if _is_night() else "✅"
         line = f"{mark} <b>Відбій повітряної тривоги</b>"

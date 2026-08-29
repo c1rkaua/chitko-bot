@@ -1044,6 +1044,8 @@ async def scheduled_monitor():
         print(f"MONITOR send {e}")
 
 async def scheduled_air():
+    import time
+
     try:
         data = process_air_cycle()
     except Exception as e:
@@ -1053,14 +1055,27 @@ async def scheduled_air():
         return
     if data.get("action") != "PUBLISH":
         return
+
     text = format_air_post(data).strip()
     if len(text) < 20:
         return
+
+    now = time.time()
+    last = getattr(scheduled_air, "_last", {"sig": "", "at": 0.0})
+    sig = text[:80]
+    if sig == last.get("sig") and now - last.get("at", 0) < 180:
+        print("AIR skip dup")
+        return
+    if (data.get("event_type") or "").startswith("ALERT_END"):
+        if now - last.get("at", 0) < 900 and "Відбій" in (last.get("sig") or ""):
+            print("AIR skip end flood")
+            return
+    scheduled_air._last = {"sig": sig, "at": now}
+
     try:
         await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     except Exception as e:
         print(f"AIR send {e}")
-
             
 async def main():
     print("Я заработал")
