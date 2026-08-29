@@ -906,7 +906,40 @@ async def scheduled_news():
         f"Проверил новости.\nКандидаты: {len(news_list)}\nАвто: {sent}\nВремя: {datetime.now().strftime('%H:%M')}",
     )
 
-LAST_THREAT = {"sig": "", "at": 0.0}
+LAST_THREAT = {"sig": "", "at": 0.0, "msg_id": None}
+
+
+def format_threat_now(result: dict) -> str:
+    from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI, _direction
+
+    totals = result.get("totals") or {}
+    target = "Київ"
+    lines = []
+    for t in (
+        "UAV", "ISKANDER", "KINZHAL", "ZIRCON",
+        "X101", "X22", "ORESHNIK", "HYPER", "AERO",
+        "BALLISTIC", "CRUISE", "UNKNOWN",
+    ):
+        n = int(totals.get(t) or 0)
+        if n <= 0:
+            continue
+        emoji = EMOJI.get(t, "⚠️")
+        name = TYPE_UA_ONE.get(t) if n == 1 else TYPE_UA.get(t)
+        lines.append(f"{emoji} {n} {name}")
+    if not lines:
+        return ""
+    if result.get("action") == "PUBLISH":
+        head = "🚨 <b>Повітряна загроза</b> 🚨"
+    else:
+        head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
+    return (
+        f"{head}\n\n"
+        f"Станом на зараз {_direction(target)}:\n"
+        + "\n".join(lines)
+        + "\n\nПройдіть в укриття.\n\n"
+        f"<b>ЧІТКО</b>"
+    )
+
 
 async def scheduled_threats():
     import time
@@ -921,23 +954,30 @@ async def scheduled_threats():
         action = result.get("action")
         if action not in ("PUBLISH", "UPDATE"):
             continue
-        msg = (result.get("message") or "").strip()
-        reason = result.get("reason") or ""
-        if not msg:
+        text = format_threat_now(result)
+        if not text:
             continue
 
-        if action == "UPDATE":
-            if now - LAST_THREAT.get("at", 0) < 180:
-                print(f"THREAT skip cooldown {reason}")
+        if action == "UPDATE" and LAST_THREAT.get("msg_id"):
+            try:
+                await bot.edit_message_text(
+                    chat_id=CHANNEL_ID,
+                    message_id=LAST_THREAT["msg_id"],
+                    text=text,
+                    parse_mode="HTML",
+                )
+                LAST_THREAT["at"] = now
+                LAST_THREAT["sig"] = text
+                print("THREAT edited")
                 continue
-            if reason == LAST_THREAT.get("sig"):
-                continue
-
-        LAST_THREAT["sig"] = reason
-        LAST_THREAT["at"] = now
+            except Exception as e:
+                print(f"THREAT edit fail {e}")
 
         try:
-            await bot.send_message(CHANNEL_ID, msg, parse_mode="HTML")
+            sent = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+            LAST_THREAT["msg_id"] = sent.message_id
+            LAST_THREAT["at"] = now
+            LAST_THREAT["sig"] = text
         except Exception as e:
             print(f"THREAT send error: {e}")
             continue
@@ -945,7 +985,7 @@ async def scheduled_threats():
         if action == "PUBLISH":
             await bot.send_message(
                 ADMIN_GROUP_ID,
-                f"Атака авто: {action} / {reason}",
+                f"Атака авто: {action}",
             )
 
 async def scheduled_monitor():
