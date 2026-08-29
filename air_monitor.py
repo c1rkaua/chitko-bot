@@ -117,21 +117,22 @@ def poll_new_targets() -> list:
         slot = by_district.setdefault(label, {})
         slot[t] = slot.get(t, 0) + max(n, 1)
 
-    eradar = fetch_eradar_districts()
-    if "Київ" in by_district and eradar:
-        counts = by_district.pop("Київ")
-        for name in eradar:
-            slot = by_district.setdefault(name, {})
-            for t, n in counts.items():
-                slot[t] = max(slot.get(t, 0), n)
+    hints = fetch_eradar_districts()
+    if "Київ" in by_district and hints:
+        by_district["Київ"]["_hints"] = hints
 
     state = load_seen()
     last = (state.get("by_district") if isinstance(state, dict) else None) or {}
     out = []
     for label, counts in by_district.items():
+        hints_now = []
+        if isinstance(counts, dict) and "_hints" in counts:
+            hints_now = counts.pop("_hints") or []
         prev = last.get(label) or {}
         buckets = {}
         for t, n in counts.items():
+            if t == "_hints":
+                continue
             delta = n - int(prev.get(t) or 0)
             if delta > 0:
                 buckets[t] = delta
@@ -141,6 +142,7 @@ def poll_new_targets() -> list:
         if isinstance(result, dict):
             result["district"] = label
             result["totals_now"] = counts
+            result["hints"] = hints_now
             out.append(result)
 
     save_seen({

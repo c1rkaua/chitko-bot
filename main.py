@@ -914,6 +914,7 @@ def format_threat_now(result: dict) -> str:
 
     district = result.get("district") or "Київ"
     totals = result.get("totals_now") or result.get("totals") or {}
+    hints = result.get("hints") or []
     lines = []
     for t in (
         "UAV", "ISKANDER", "KINZHAL", "ZIRCON",
@@ -928,16 +929,23 @@ def format_threat_now(result: dict) -> str:
         lines.append(f"{emoji} {n} {name}")
     if not lines:
         return ""
-    head = "🚨 <b>Повітряна загроза</b> 🚨" if result.get("action") == "PUBLISH" else "⚠️ <b>Оновлення щодо загрози</b>"
-    where = f"район {district}" if district != "Київ" else "Київ"
+    if result.get("action") == "PUBLISH":
+        head = "🚨 <b>Повітряна загроза</b> 🚨"
+    else:
+        head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
+    where = "Київ" if district == "Київ" else district
+    extra = ""
+    if hints:
+        extra = "Орієнтир: " + ", ".join(hints) + ".\n"
     return (
         f"{head}\n\n"
         f"{where}. Станом на зараз:\n"
         + "\n".join(lines)
-        + "\n\nПройдіть в укриття.\n\n"
+        + "\n"
+        + extra
+        + "\nПройдіть в укриття.\n\n"
         f"<b>ЧІТКО</b>"
     )
-
 
 async def scheduled_threats():
     import time
