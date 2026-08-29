@@ -970,13 +970,37 @@ def format_threat_now(result: dict) -> str:
 
 async def scheduled_threats():
     import time
+    from air_engine import fetch_official_alerts, load_state
+
+    try:
+        official = fetch_official_alerts() or {}
+        state = load_state() or {}
+    except Exception as e:
+        print(f"THREAT official err {e}")
+        return
+
+    kyiv_api = bool(official.get("kyiv"))
+    kyiv_state = bool(state.get("kyiv_alert"))
+    last_end = float(state.get("last_end_at") or 0)
+    now = time.time()
+
+    if (not kyiv_api) or (not kyiv_state):
+        slot = LAST_THREAT.get("Київ") or {}
+        slot["text"] = ""
+        LAST_THREAT["Київ"] = slot
+        print("THREAT skip: no official Kyiv alert")
+        return
+
+    if last_end and now - last_end < 180:
+        print("THREAT skip: just all-clear")
+        return
+
     try:
         results = poll_new_targets()
     except Exception as e:
         print(f"THREAT poll error: {e}")
         return
 
-    now = time.time()
     for result in results:
         action = result.get("action")
         if action not in ("PUBLISH", "UPDATE"):
@@ -1013,9 +1037,6 @@ async def scheduled_threats():
         except Exception as e:
             print(f"THREAT send error: {e}")
             continue
-
-        if action == "PUBLISH":
-            await bot.send_message(ADMIN_GROUP_ID, f"Атака авто: {key}")
 
 async def scheduled_monitor():
     import time
