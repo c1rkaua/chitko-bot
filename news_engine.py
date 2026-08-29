@@ -112,38 +112,35 @@ def extract_tg_media(chunk: str) -> dict:
 
     video = None
     m = re.search(
-        r'(?:src|href)=["\'](https://cdn4\.telesco\.pe/file/[^"\']+\.mp4)',
+        r'<video[^>]+src=["\'](https://cdn4\.telesco\.pe/file/[^"\']+)',
         chunk,
         re.I,
     )
+    if not m:
+        m = re.search(
+            r'(https://cdn4\.telesco\.pe/file/[^"\s\']+\.mp4\?[^"\s\']+)',
+            chunk,
+            re.I,
+        )
     if m:
         video = m.group(1)
-    if not video:
-        m = re.search(r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+\.mp4)", chunk)
-        if m:
-            video = m.group(1)
 
     if video:
+        print(f"TG video ok {video[:60]}")
         return {"photos": [], "video": video}
 
     photos = []
     seen = set()
-    photo_blocks = re.split(r"tgme_widget_message_photo", chunk)
-    for block in photo_blocks[1:]:
+    parts = re.split(r"tgme_widget_message_photo", chunk)
+    for block in parts[1:]:
         if "userpic" in block[:200].lower():
             continue
         raw = re.findall(
             r"background-image:url\('?(https?://cdn4\.telesco\.pe/file/[^')\s]+)'?\)",
             block,
         )
-        raw += re.findall(
-            r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+)",
-            block,
-        )
         for u in raw:
-            if ".mp4" in u:
-                continue
-            if "emoji" in u or "userpic" in u:
+            if ".mp4" in u or "emoji" in u or "userpic" in u:
                 continue
             if u not in seen:
                 seen.add(u)
