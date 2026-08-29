@@ -61,32 +61,45 @@ def is_same_story(a: str, b: str) -> bool:
 def extract_tg_media(chunk: str) -> dict:
     import re
 
-    raw = re.findall(
-        r"background-image:url\('?(https?://cdn4\.telesco\.pe/file/[^')\s]+)'?\)",
-        chunk,
-    )
-    raw += re.findall(
-        r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+)",
-        chunk,
-    )
-    photos = []
-    seen = set()
-    for u in raw:
-        if "telegram.org/img/emoji" in u:
-            continue
-        if u not in seen:
-            seen.add(u)
-            photos.append(u)
-
     video = None
     m = re.search(
-        r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+\.mp4)",
+        r'(?:src|href)=["\'](https://cdn4\.telesco\.pe/file/[^"\']+\.mp4)',
         chunk,
+        re.I,
     )
     if m:
         video = m.group(1)
+    if not video:
+        m = re.search(r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+\.mp4)", chunk)
+        if m:
+            video = m.group(1)
 
-    return {"photos": photos[:4], "video": video}
+    if video:
+        return {"photos": [], "video": video}
+
+    photos = []
+    seen = set()
+    photo_blocks = re.split(r"tgme_widget_message_photo", chunk)
+    for block in photo_blocks[1:]:
+        if "userpic" in block[:200].lower():
+            continue
+        raw = re.findall(
+            r"background-image:url\('?(https?://cdn4\.telesco\.pe/file/[^')\s]+)'?\)",
+            block,
+        )
+        raw += re.findall(
+            r"(https://cdn4\.telesco\.pe/file/[^\"')\s]+)",
+            block,
+        )
+        for u in raw:
+            if ".mp4" in u:
+                continue
+            if "emoji" in u or "userpic" in u:
+                continue
+            if u not in seen:
+                seen.add(u)
+                photos.append(u)
+    return {"photos": photos[:4], "video": None}
 
 def fetch_tg_channel_posts() -> list:
     global LAST_TG_STATS
