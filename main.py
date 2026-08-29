@@ -882,7 +882,7 @@ def pick_cycle_news(items: list) -> list:
 
 async def scheduled_news():
     import time
-    from news_engine import is_breaking
+    from news_engine import is_breaking, is_same_story
 
     news_list = get_top_news_for_brief(12)
     news_list = pick_cycle_news(news_list)
@@ -896,6 +896,9 @@ async def scheduled_news():
         title = (news.get("title_chitko") or news.get("title") or "").strip()
         if len(title) < 8:
             continue
+        if any(is_same_story(title, old) for old in LAST_PUB_TITLES):
+            print(f"DEDUP mem: {title[:80]}")
+            continue
         formatted = format_news_post(news)
         if not formatted or "⚡️" not in formatted:
             continue
@@ -907,6 +910,9 @@ async def scheduled_news():
             continue
 
         await send_news_to_channel(news, formatted)
+        LAST_PUB_TITLES.append(title)
+        if len(LAST_PUB_TITLES) > 80:
+            del LAST_PUB_TITLES[:-80]
         published_ids.add(news["event_id"])
         save_published_ids(published_ids)
         recent = load_recent_titles()
@@ -927,6 +933,7 @@ async def scheduled_news():
 
 LAST_THREAT = {}
 LAST_AUTO_NEWS = {"at": 0.0}
+LAST_PUB_TITLES = []
 
 def format_threat_now(result: dict) -> str:
     from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI
