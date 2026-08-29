@@ -1036,6 +1036,26 @@ MEANING не повинен повторювати новину, а має пр�
         print(f"LLM rewrite exception: {e}")
         return empty
 
+def prepare_chitko_news(news: dict):
+    title = (news.get("title_chitko") or news.get("title") or "").strip()
+    body = (news.get("text") or news.get("summary") or news.get("body") or "").strip()
+    rew = rewrite_chitko_post(title, body, news.get("bucket") or "")
+    new_title = (rew.get("title") or "").strip()
+    new_body = (rew.get("body") or "").strip()
+    blob = f"{new_title} {new_body}".upper()
+    if not new_title or "SKIP" in blob[:20]:
+        print(f"REWRITE skip: {title[:80]}")
+        return None
+    if new_title == title and new_body == body:
+        print(f"REWRITE raw: {title[:80]}")
+        return None
+    news["title_chitko"] = new_title
+    news["title"] = new_title
+    news["text"] = new_body
+    news["body"] = new_body
+    news["rewritten"] = True
+    return news
+
 def format_news_post(news: dict) -> str:
     import re
 
