@@ -38,27 +38,38 @@ def _is_kyiv(obj: dict) -> bool:
     ]).lower()
     return any(m in blob for m in KYIV_MARKERS)
 
-
 def _map_type(obj: dict) -> str:
     raw = " ".join([
         str(obj.get("kind") or ""),
         str(obj.get("subkind") or ""),
         str(obj.get("title") or ""),
         str(obj.get("type") or ""),
+        str(obj.get("name") or ""),
     ]).lower()
 
-    if any(w in raw for w in ["ballistic", "баліст", "iskander", "іскандер", "кинжал", "kinzhal"]):
-        return "BALLISTIC"
-    if any(w in raw for w in ["hypersonic", "гіпер"]):
+    if "орешник" in raw or "oreshnik" in raw:
+        return "ORESHNIK"
+    if "кінжал" in raw or "кинжал" in raw or "kinzhal" in raw:
+        return "KINZHAL"
+    if "циркон" in raw or "zircon" in raw:
+        return "ZIRCON"
+    if "іскандер" in raw or "искандер" in raw or "iskander" in raw:
+        return "ISKANDER"
+    if "х-22" in raw or "x-22" in raw:
+        return "X22"
+    if "х-101" in raw or "x-101" in raw or "х-555" in raw or "x-555" in raw:
+        return "X101"
+    if any(w in raw for w in ["hypersonic", "гіпер", "гипер"]):
         return "HYPER"
-    if any(w in raw for w in ["cruise", "крилат", "калибр", "калібр", "x-101", "х-101"]):
+    if any(w in raw for w in ["ballistic", "баліст", "балист"]):
+        return "BALLISTIC"
+    if any(w in raw for w in ["cruise", "крилат", "калибр", "калібр"]):
         return "CRUISE"
-    if any(w in raw for w in ["drone", "uav", "shahed", "шахед", "бпла"]):
+    if any(w in raw for w in ["drone", "uav", "shahed", "шахед", "бпла", "shaheed"]):
         return "UAV"
     if "ракет" in raw or "missile" in raw:
         return "UNKNOWN"
     return "UAV"
-
 
 def fetch_live_objects() -> list:
     objects = []
@@ -115,3 +126,39 @@ def poll_new_targets() -> list:
         return []
     
     return [ingest_combo(buckets, "Київ")]
+
+MONITOR_LAST = {"sig": "", "at": 0.0}
+
+KYIV_MONITOR = [
+    "київ", "киев", "київщин", "киевщин",
+    "троєщин", "оболон", "дарниц", "дарницьк",
+    "святошин", "печерськ", "поділ", "голосіїв",
+    "солом'ян", "солом’ян", "деснян",
+    "лівобереж", "борщаг", "виноградар",
+    "вишгород", "бровар", "ірпін", "буч",
+    "фастів", "біла церк", "погреб", "переяслав",
+    "славутич", "васильків",
+]
+
+
+def fetch_monitor_kyiv() -> str:
+    import re
+    import requests
+
+    html = requests.get(
+        "https://t.me/s/war_monitor",
+        timeout=12,
+        headers={"User-Agent": "Mozilla/5.0"},
+    ).text
+    chunks = re.split(r'class="tgme_widget_message_text', html)
+    texts = []
+    for chunk in chunks[1:6]:
+        raw = re.sub(r"<[^>]+>", " ", chunk)
+        raw = re.sub(r"\s+", " ", raw).strip()
+        low = raw.lower()
+        if not any(k in low for k in KYIV_MONITOR):
+            continue
+        if any(x in low for x in ["стратегічн", "обстановка станом", "флот", "ракетоносі"]):
+            continue
+        texts.append(raw[:400])
+    return texts[0] if texts else ""

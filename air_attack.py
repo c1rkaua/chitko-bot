@@ -12,6 +12,12 @@ TYPE_UA = {
     "HYPER": "гіперзвукові ракети",
     "UAV": "ударні БПЛА",
     "UNKNOWN": "невстановлені повітряні цілі",
+    "KINZHAL": "«Кинжал»",
+    "ZIRCON": "«Циркон»",
+    "ISKANDER": "«Іскандер»",
+    "X101": "Х-101 / Х-555",
+    "X22": "Х-22",
+    "ORESHNIK": "«Орешник»",
 }
 
 TYPE_UA_ONE = {
@@ -21,18 +27,60 @@ TYPE_UA_ONE = {
     "HYPER": "гіперзвукова ракета",
     "UAV": "ударний БПЛА",
     "UNKNOWN": "невстановлена повітряна ціль",
+    "KINZHAL": "«Кинжал»",
+    "ZIRCON": "«Циркон»",
+    "ISKANDER": "«Іскандер»",
+    "X101": "Х-101 / Х-555",
+    "X22": "Х-22",
+    "ORESHNIK": "«Орешник»",
 }
 
 EMOJI = {
     "BALLISTIC": "🔴",
     "CRUISE": "🚀",
     "AERO": "🔴",
-    "HYPER": "🔴",
+    "HYPER": "💥",
     "UAV": "🛩",
     "UNKNOWN": "⚠️",
-    "COMBO": "🔴",
+    "COMBO": "🚨",
+    "KINZHAL": "💥",
+    "ZIRCON": "🌊",
+    "ISKANDER": "🔴",
+    "X101": "🚀",
+    "X22": "🚀",
+    "ORESHNIK": "☢️",
 }
 
+def format_wave_summary(totals: dict, target: str = "Київ") -> str:
+    order = (
+        "UAV", "ISKANDER", "KINZHAL", "ZIRCON",
+        "X101", "X22", "ORESHNIK", "HYPER", "AERO",
+        "BALLISTIC", "CRUISE", "UNKNOWN",
+    )
+    labels = {
+        "UAV": "БПЛА",
+        "ISKANDER": "«Іскандер»",
+        "KINZHAL": "«Кинжал»",
+        "ZIRCON": "«Циркон»",
+        "X101": "Х-101 / Х-555",
+        "X22": "Х-22",
+        "ORESHNIK": "«Орешник»",
+        "HYPER": "гіперзвукові",
+        "AERO": "аеробалістичні",
+        "BALLISTIC": "балістичні цілі",
+        "CRUISE": "крилаті ракети",
+        "UNKNOWN": "невстановлені цілі",
+    }
+    lines = []
+    for t in order:
+        n = int((totals or {}).get(t) or 0)
+        if n <= 0:
+            continue
+        lines.append(f"{EMOJI.get(t, '⚠️')} {n}× {labels.get(t, t)}")
+    if not lines:
+        return ""
+    where = "на Київ" if target == "Київ" else "на Київщину"
+    return "За цю тривогу зафіксовано " + where + ":\n" + "\n".join(lines)
 
 def load_attack() -> dict:
     if not os.path.exists(ATTACK_FILE):
