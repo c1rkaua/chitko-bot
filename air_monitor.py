@@ -117,7 +117,7 @@ def poll_new_targets() -> list:
         slot = by_district.setdefault(label, {})
         slot[t] = slot.get(t, 0) + max(n, 1)
 
-    hints = fetch_eradar_districts()
+    hints = fetch_district_hints()
     if "Київ" in by_district and hints:
         by_district["Київ"]["_hints"] = hints
 
@@ -186,6 +186,8 @@ KYIV_DISTRICTS = [
     ("лук'ян", "Лук'янівка"),
     ("конч", "Конча-Заспа"),
     ("голосіїв", "Голосіїв"),
+    ("шуляв", "Шулявка"),
+    ("теремк", "Теремки"),
 ]
 
 KYIV_MONITOR = [
@@ -219,23 +221,22 @@ def fetch_monitor_kyiv() -> str:
         texts.append(raw[:400])
     return texts[0] if texts else ""
 
-def fetch_eradar_districts() -> list:
+def fetch_tg_districts(url: str) -> list:
     import re
     import requests
 
     try:
-        html = requests.get(
-            "https://t.me/s/eradarrua",
-            timeout=12,
-            headers={"User-Agent": "Mozilla/5.0"},
-        ).text
+        html = requests.get(url, timeout=12, headers={"User-Agent": "Mozilla/5.0"}).text
     except Exception as e:
-        print(f"ERADAR err {e}")
+        print(f"DISTRICT fetch {url}: {e}")
         return []
 
     chunks = re.split(r'class="tgme_widget_message_text', html)
     found = []
-    skip = ("вишгород", "бровар", "ірпін", "фастів", "київщин", "област")
+    skip = (
+        "вишгород", "бровар", "ірпін", "фастів", "київщин",
+        "област", "димерк", "лебедів",
+    )
     for chunk in chunks[1:8]:
         raw = re.sub(r"<[^>]+>", " ", chunk)
         raw = re.sub(r"\s+", " ", raw).strip()
@@ -246,3 +247,19 @@ def fetch_eradar_districts() -> list:
             if name not in found:
                 found.append(name)
     return found
+
+
+def fetch_eradar_districts() -> list:
+    return fetch_tg_districts("https://t.me/s/eradarrua")
+
+
+def fetch_kievreal_districts() -> list:
+    return fetch_tg_districts("https://t.me/s/kievreal1")
+
+
+def fetch_district_hints() -> list:
+    merged = []
+    for name in fetch_eradar_districts() + fetch_kievreal_districts():
+        if name not in merged:
+            merged.append(name)
+    return merged
