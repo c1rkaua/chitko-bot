@@ -999,7 +999,6 @@ async def scheduled_threats():
         slot = LAST_THREAT.get("Київ") or {}
         slot["text"] = ""
         LAST_THREAT["Київ"] = slot
-        print("THREAT skip: no official Kyiv alert")
         return
 
     if last_end and now - last_end < 180:
