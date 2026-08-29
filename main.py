@@ -919,7 +919,6 @@ def cluster_unique(items: list) -> list:
         out.append(n)
     return out
 
-
 async def scheduled_news():
     import time
     from news_engine import is_breaking, is_same_story, prepare_chitko_news
@@ -958,6 +957,8 @@ async def scheduled_news():
             continue
 
         await send_news_to_channel(news, formatted)
+        LAST_AUTO_NEWS["at"] = now
+        save_last_auto(now)
         LAST_PUB_TITLES.append(title)
         if len(LAST_PUB_TITLES) > 80:
             del LAST_PUB_TITLES[:-80]
@@ -968,7 +969,6 @@ async def scheduled_news():
         save_recent_titles(recent)
         sent += 1
         if not breaking:
-            LAST_AUTO_NEWS["at"] = now
             break
 
     try:
@@ -982,6 +982,26 @@ async def scheduled_news():
 LAST_THREAT = {}
 LAST_AUTO_NEWS = {"at": 0.0}
 LAST_PUB_TITLES = []
+LAST_AUTO_FILE = "last_auto.json"
+
+def load_last_auto() -> float:
+    import json
+    import os
+    try:
+        if os.path.exists(LAST_AUTO_FILE):
+            with open(LAST_AUTO_FILE, "r", encoding="utf-8") as f:
+                return float((json.load(f) or {}).get("at") or 0)
+    except Exception:
+        pass
+    return 0.0
+
+def save_last_auto(ts: float) -> None:
+    import json
+    try:
+        with open(LAST_AUTO_FILE, "w", encoding="utf-8") as f:
+            json.dump({"at": ts}, f)
+    except Exception as e:
+        print(f"SAVE last_auto {e}")
 
 def format_threat_now(result: dict) -> str:
     from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI
@@ -1167,6 +1187,10 @@ async def main():
         print(f"SEED titles {len(LAST_PUB_TITLES)}")
     except Exception as e:
         print(f"SEED titles fail {e}")
+
+    LAST_AUTO_NEWS["at"] = load_last_auto()
+    print(f"SEED last_auto {int(LAST_AUTO_NEWS['at'])}")
+
     scheduler.add_job(
         scheduled_brief,
         CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv"),
