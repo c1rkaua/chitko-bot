@@ -882,7 +882,7 @@ def pick_cycle_news(items: list) -> list:
 
 async def scheduled_news():
     import time
-    from news_engine import is_breaking, is_same_story
+    from news_engine import is_breaking, is_same_story, prepare_chitko_news
 
     news_list = get_top_news_for_brief(12)
     news_list = pick_cycle_news(news_list)
@@ -899,6 +899,13 @@ async def scheduled_news():
         if any(is_same_story(title, old) for old in LAST_PUB_TITLES):
             print(f"DEDUP mem: {title[:80]}")
             continue
+
+        prepared = prepare_chitko_news(news)
+        if not prepared:
+            continue
+        news = prepared
+        title = (news.get("title_chitko") or news.get("title") or "").strip()
+
         formatted = format_news_post(news)
         if not formatted or "⚡️" not in formatted:
             continue
