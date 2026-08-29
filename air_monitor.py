@@ -11,20 +11,22 @@ KYIV_MARKERS = [
     "ірпін", "буч", "фастів", "біла церк",
 ]
 
-
-def load_seen() -> set:
+def load_seen():
     if not os.path.exists(SEEN_FILE):
-        return set()
+        return {"counts": {}}
     try:
         with open(SEEN_FILE, "r", encoding="utf-8") as f:
-            return set(json.load(f))
+            data = json.load(f)
+        if isinstance(data, dict):
+            return data
+        return {"counts": {}}
     except Exception:
-        return set()
+        return {"counts": {}}
 
 
-def save_seen(ids_set: set):
+def save_seen(data):
     with open(SEEN_FILE, "w", encoding="utf-8") as f:
-        json.dump(list(ids_set)[-400:], f)
+        json.dump(data, f)
 
 
 def _is_kyiv(obj: dict) -> bool:
@@ -85,36 +87,31 @@ def fetch_live_objects() -> list:
 def poll_new_targets() -> list:
     from air_attack import ingest_combo
 
-    seen = load_seen()
     objects = fetch_live_objects()
+    kyiv_now = [obj for obj in objects if _is_kyiv(obj)]
 
-    if not seen and objects:
-        for obj in objects:
-            oid = str(obj.get("id") or obj.get("key") or "")
-            if oid:
-                seen.add(oid)
-        save_seen(seen)
-        return []
+    counts = {}
+    for obj in kyiv_now:
+        t = _map_type(obj)
+        counts[t] = counts.get(t, 0) + 1
 
-    fresh = []
-    for obj in objects:
-        oid = str(obj.get("id") or obj.get("key") or "")
-        if not oid or oid in seen:
-            continue
-        if not _is_kyiv(obj):
-            seen.add(oid)
-            continue
-        fresh.append(obj)
-        seen.add(oid)
-
-    save_seen(seen)
+    state = load_seen()
+    last_counts = {}
+    if isinstance(state, dict) and "counts" in state:
+        last_counts = state.get("counts") or {}
+    elif isinstance(state, set):
+        last_counts = {}
 
     buckets = {}
-    for obj in fresh:
-        t = _map_type(obj)
-        buckets[t] = buckets.get(t, 0) + 1
+    for t, n in counts.items():
+        prev = int(last_counts.get(t) or 0)
+        delta = n - prev
+        if delta > 0:
+            buckets[t] = delta
+
+    save_seen({"counts": counts})
 
     if not buckets:
         return []
-
+    
     return [ingest_combo(buckets, "Київ")]

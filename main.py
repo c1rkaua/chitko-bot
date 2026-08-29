@@ -895,27 +895,47 @@ async def scheduled_news():
         f"Проверил новости.\nКандидаты: {len(news_list)}\nАвто: {sent}\nВремя: {datetime.now().strftime('%H:%M')}",
     )
 
+LAST_THREAT = {"sig": "", "at": 0.0}
+
 async def scheduled_threats():
+    import time
     try:
         results = poll_new_targets()
     except Exception as e:
         print(f"THREAT poll error: {e}")
         return
 
+    now = time.time()
     for result in results:
-        if result.get("action") not in ("PUBLISH", "UPDATE"):
+        action = result.get("action")
+        if action not in ("PUBLISH", "UPDATE"):
             continue
-        msg = result.get("message")
+        msg = (result.get("message") or "").strip()
+        reason = result.get("reason") or ""
         if not msg:
             continue
+
+        if action == "UPDATE":
+            if now - LAST_THREAT.get("at", 0) < 180:
+                print(f"THREAT skip cooldown {reason}")
+                continue
+            if reason == LAST_THREAT.get("sig"):
+                continue
+
+        LAST_THREAT["sig"] = reason
+        LAST_THREAT["at"] = now
+
         try:
             await bot.send_message(CHANNEL_ID, msg, parse_mode="HTML")
-            await bot.send_message(
-                ADMIN_GROUP_ID,
-                f"Атака авто: {result.get('action')} / {result.get('reason')}"
-            )
         except Exception as e:
             print(f"THREAT send error: {e}")
+            continue
+
+        if action == "PUBLISH":
+            await bot.send_message(
+                ADMIN_GROUP_ID,
+                f"Атака авто: {action} / {reason}",
+            )
 
 async def scheduled_air():
     try:
