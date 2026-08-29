@@ -39,6 +39,9 @@ def _is_kyiv_city(obj: dict) -> bool:
         or city.startswith("киев")
     )
 
+def _is_kyiv(obj: dict) -> bool:
+    return _is_kyiv_city(obj)
+
 def detect_districts(text: str) -> list:
     low = (text or "").lower()
     found = []
