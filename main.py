@@ -962,27 +962,6 @@ async def scheduled_news():
     except Exception:
         pass
 
-def cluster_unique(items: list) -> list:
-    from news_engine import is_same_story, load_recent_titles
-
-    seen = list(LAST_PUB_TITLES)
-    try:
-        seen.extend(load_recent_titles() or [])
-    except Exception:
-        pass
-    out = []
-    for n in items:
-        title = (n.get("title_chitko") or n.get("title") or "").strip()
-        if len(title) < 8:
-            continue
-        if any(is_same_story(title, old) for old in seen):
-            print(f"CLUSTER skip: {title[:80]}")
-            continue
-        seen.append(title)
-        out.append(n)
-    print(f"CLUSTER kept {len(out)}")
-    return out
-
 LAST_THREAT = {}
 LAST_AUTO_NEWS = {"at": 0.0}
 LAST_PUB_TITLES = []
