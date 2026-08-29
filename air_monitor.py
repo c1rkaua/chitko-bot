@@ -117,6 +117,14 @@ def poll_new_targets() -> list:
         slot = by_district.setdefault(label, {})
         slot[t] = slot.get(t, 0) + max(n, 1)
 
+    eradar = fetch_eradar_districts()
+    if "Київ" in by_district and eradar:
+        counts = by_district.pop("Київ")
+        for name in eradar:
+            slot = by_district.setdefault(name, {})
+            for t, n in counts.items():
+                slot[t] = max(slot.get(t, 0), n)
+
     state = load_seen()
     last = (state.get("by_district") if isinstance(state, dict) else None) or {}
     out = []
@@ -135,7 +143,11 @@ def poll_new_targets() -> list:
             result["totals_now"] = counts
             out.append(result)
 
-    save_seen({"by_district": by_district, "counts": {}, "districts": list(by_district.keys())})
+    save_seen({
+        "by_district": by_district,
+        "counts": {},
+        "districts": list(by_district.keys()),
+    })
     return out
 
 MONITOR_LAST = {"sig": "", "at": 0.0}
@@ -167,6 +179,11 @@ KYIV_DISTRICTS = [
     ("білич", "Біличі"),
     ("академміст", "Академмістечко"),
     ("мінськ", "Мінський масив"),
+    ("совк", "Совки"),
+    ("лук’ян", "Лук'янівка"),
+    ("лук'ян", "Лук'янівка"),
+    ("конч", "Конча-Заспа"),
+    ("голосіїв", "Голосіїв"),
 ]
 
 KYIV_MONITOR = [
@@ -199,3 +216,31 @@ def fetch_monitor_kyiv() -> str:
             continue
         texts.append(raw[:400])
     return texts[0] if texts else ""
+
+def fetch_eradar_districts() -> list:
+    import re
+    import requests
+
+    try:
+        html = requests.get(
+            "https://t.me/s/eradarrua",
+            timeout=12,
+            headers={"User-Agent": "Mozilla/5.0"},
+        ).text
+    except Exception as e:
+        print(f"ERADAR err {e}")
+        return []
+
+    chunks = re.split(r'class="tgme_widget_message_text', html)
+    found = []
+    skip = ("вишгород", "бровар", "ірпін", "фастів", "київщин", "област")
+    for chunk in chunks[1:8]:
+        raw = re.sub(r"<[^>]+>", " ", chunk)
+        raw = re.sub(r"\s+", " ", raw).strip()
+        low = raw.lower()
+        if any(s in low for s in skip):
+            continue
+        for name in detect_districts(raw):
+            if name not in found:
+                found.append(name)
+    return found
