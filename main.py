@@ -947,6 +947,7 @@ def format_threat_now(result: dict) -> str:
         f"<b>ЧІТКО</b>"
     )
 
+
 async def scheduled_threats():
     import time
     try:
@@ -963,8 +964,11 @@ async def scheduled_threats():
         text = format_threat_now(result)
         if not text:
             continue
-        key = result.get("district") or "Київ"
-        slot = LAST_THREAT.setdefault(key, {"msg_id": None, "at": 0.0})
+
+        key = "Київ"
+        slot = LAST_THREAT.setdefault(key, {"msg_id": None, "at": 0.0, "text": ""})
+        if slot.get("text") == text:
+            continue
 
         if slot.get("msg_id"):
             try:
@@ -975,15 +979,17 @@ async def scheduled_threats():
                     parse_mode="HTML",
                 )
                 slot["at"] = now
-                print(f"THREAT edited {key}")
+                slot["text"] = text
+                print("THREAT edited Kyiv")
                 continue
             except Exception as e:
-                print(f"THREAT edit fail {key}: {e}")
+                print(f"THREAT edit fail: {e}")
 
         try:
             sent = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
             slot["msg_id"] = sent.message_id
             slot["at"] = now
+            slot["text"] = text
         except Exception as e:
             print(f"THREAT send error: {e}")
             continue
