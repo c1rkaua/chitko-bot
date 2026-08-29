@@ -929,7 +929,7 @@ def format_threat_now(result: dict) -> str:
     if not lines:
         return ""
     head = "🚨 <b>Повітряна загроза</b> 🚨" if result.get("action") == "PUBLISH" else "⚠️ <b>Оновлення щодо загрози</b>"
-    where = f"район {district}" if district != "Київ" else "Київ (район не вказано)"
+    where = f"район {district}" if district != "Київ" else "Київ"
     return (
         f"{head}\n\n"
         f"{where}. Станом на зараз:\n"
