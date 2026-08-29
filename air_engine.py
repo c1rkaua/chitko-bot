@@ -292,14 +292,13 @@ def process_air_cycle() -> dict:
 
     if decision.get("action") == "PUBLISH":
         last_event = state.get("last_event", "")
-        if (
-            decision.get("event_type") == last_event
-            and now_ts - state.get("last_post_at", 0) < 20
-        ):
-            decision = {"action": "IGNORE", "reason": "Антиспам 20с."}
+        et = str(decision.get("event_type") or "")
+        gap = 900 if et.startswith("ALERT_END") else 20
+        if et == last_event and now_ts - state.get("last_post_at", 0) < gap:
+            decision = {"action": "IGNORE", "reason": "Антиспам відбій."}
         else:
             state["last_post_at"] = now_ts
-            state["last_event"] = decision.get("event_type", "")
+            state["last_event"] = et
 
     if current.get("kyiv") and not state.get("kyiv_since"):
         state["kyiv_since"] = now_ts
@@ -312,21 +311,12 @@ def process_air_cycle() -> dict:
         state["oblast_since"] = 0
 
     et = decision.get("event_type", "")
-    if et == "ALERT_END_KYIV":
+    if et in ("ALERT_END", "ALERT_END_KYIV"):
         state["kyiv_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et == "ALERT_END_OBLAST":
-        state["oblast_end_sent"] = True
-        state["last_end_at"] = now_ts
-    if et == "ALERT_END":
-        state["kyiv_end_sent"] = True
-        state["oblast_end_sent"] = True
         state["last_end_at"] = now_ts
     if et in ("ALERT_START", "ALERT_UPDATE"):
         if current.get("kyiv"):
             state["kyiv_end_sent"] = False
-        if current.get("oblast"):
-            state["oblast_end_sent"] = False
 
     state["kyiv_alert"] = current.get("kyiv", False)
     state["oblast_alert"] = current.get("oblast", False)
@@ -335,4 +325,3 @@ def process_air_cycle() -> dict:
 
     decision["current"] = current
     return decision
-        
