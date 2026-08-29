@@ -847,7 +847,16 @@ async def send_news_to_channel(news: dict, formatted: str):
 
 def pick_cycle_news(items: list) -> list:
     items = sorted(items or [], key=lambda x: x.get("final_score") or 0, reverse=True)
-    civilian, war, politics, other = [], [], [], []
+    civilian, war, politics, other, world = [], [], [], [], []
+
+    world_keys = (
+        "непал", "китай", "інді", "пакистан", "африц",
+        "голівуд", "оскар", "євробачен",
+    )
+    soft_keys = (
+        "прибуток", "фінкомпан", "котируван", "акці ",
+        "рейтинг банків",
+    )
 
     for n in items:
         bucket = n.get("bucket") or ""
@@ -856,12 +865,19 @@ def pick_cycle_news(items: list) -> list:
             continue
         if bucket == "war_filler":
             continue
+        blob = " ".join([
+            n.get("title_chitko") or "",
+            n.get("title") or "",
+            n.get("text") or "",
+        ]).lower()
         if bucket == "civilian":
             civilian.append(n)
         elif bucket == "hard_war":
             war.append(n)
         elif bucket in ("politics", "law"):
             politics.append(n)
+        elif any(k in blob for k in world_keys + soft_keys):
+            world.append(n)
         else:
             other.append(n)
 
@@ -869,18 +885,19 @@ def pick_cycle_news(items: list) -> list:
     out.extend(civilian[:2])
     if war:
         out.append(war[0])
-    if politics:
+    if politics and len(out) < 3:
         out.append(politics[0])
-    if len(out) < 3 and other:
+    if other and len(out) < 3:
         out.append(other[0])
+    if world and len(out) < 2:
+        out.append(world[0])
 
     print(
         f"PICK civil={len(civilian[:2])} war={1 if war else 0} "
-        f"pol={1 if politics and politics[0] in out else 0} other={len(out)}"
+        f"pol={1 if politics and politics[0] in out else 0} "
+        f"other={sum(1 for x in out if x in other)} world={sum(1 for x in out if x in world)}"
     )
     return out[:3]
-
-
 
 def cluster_unique(items: list) -> list:
     from news_engine import is_same_story, load_recent_titles
