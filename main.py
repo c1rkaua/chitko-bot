@@ -718,11 +718,22 @@ async def cmd_stats(message: Message):
 
 async def scheduled_brief():
     text = await create_morning_brief()
-    await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-    await bot.send_message(
-        ADMIN_GROUP_ID,
-        "Ранковий бріф опубліковано в канал."
-    )
+    cover = os.path.join(os.path.dirname(__file__), "assets", "cover_ranok.jpg")
+    try:
+        if os.path.exists(cover):
+            await bot.send_photo(
+                CHANNEL_ID,
+                photo=FSInputFile(cover),
+                caption=text,
+                parse_mode="HTML",
+            )
+        else:
+            print("BRIEF no cover file")
+            await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        await bot.send_message(ADMIN_GROUP_ID, "Ранковий бріф опубліковано в канал.")
+    except Exception as e:
+        print(f"BRIEF send {e}")
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
 
 async def scheduled_evening_digest():
     text = await create_evening_digest()
@@ -937,6 +948,32 @@ async def scheduled_threats():
                 f"Атака авто: {action} / {reason}",
             )
 
+async def scheduled_monitor():
+    import time
+    import re
+    try:
+        raw = fetch_monitor_kyiv()
+    except Exception as e:
+        print(f"MONITOR err {e}")
+        return
+    if not raw:
+        return
+    sig = re.sub(r"\W+", " ", raw.lower())[:80]
+    now = time.time()
+    if sig == MONITOR_LAST.get("sig") and now - MONITOR_LAST.get("at", 0) < 120:
+        return
+    MONITOR_LAST["sig"] = sig
+    MONITOR_LAST["at"] = now
+    text = (
+        f"⚠️ <b>Моніторинг по Києву</b> ⚠️\n\n"
+        f"{raw}\n\n"
+        f"<b>ЧІТКО</b>"
+    )
+    try:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+    except Exception as e:
+        print(f"MONITOR send {e}")
+
 async def scheduled_air():
     try:
         data = process_air_cycle()
@@ -947,7 +984,7 @@ async def scheduled_air():
         return
     if data.get("action") != "PUBLISH":
         return
-    text = (data.get("text") or "").strip()
+    text = format_air_post(data).strip()
     if len(text) < 20:
         return
     try:

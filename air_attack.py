@@ -85,21 +85,34 @@ def _active_types(totals: dict) -> list:
 
 def format_first_post(t: str, n: int, target: str) -> str:
     emoji = EMOJI.get(t, "⚠️")
-    title = f"{emoji} {_count_phrase(n, t)} {_direction(target)}."
-    return f"<b>{title}</b>\n\n<b>ЧІТКО</b>"
+    return (
+        f"🚨 <b>Повітряна загроза</b> 🚨\n\n"
+        f"{emoji} Зафіксовано {_count_phrase(n, t)} {_direction(target)}.\n"
+        f"Пройдіть в укриття.\n\n"
+        f"<b>ЧІТКО</b>"
+    )
 
 
 def format_upd_same(t: str, n: int, target: str) -> str:
+    emoji = EMOJI.get(t, "⚠️")
     if n == 1:
-        body = f"UPD: +1 {TYPE_UA_ONE[t]} {_direction(target)}."
+        body = f"{emoji} +1 {TYPE_UA_ONE[t]} {_direction(target)}."
     else:
-        body = f"UPD: +{n} {TYPE_UA[t]} {_direction(target)}."
-    return f"<b>{body}</b>\n\n<b>ЧІТКО</b>"
+        body = f"{emoji} +{n} {TYPE_UA[t]} {_direction(target)}."
+    return (
+        f"⚠️ <b>Оновлення щодо загрози</b> ⚠️\n\n️"
+        f"{body}\n\n"
+        f"<b>ЧІТКО</b>"
+    )
 
 
 def format_upd_new_type(t: str, n: int, target: str) -> str:
-    body = f"UPD: додатково {_count_phrase(n, t)} {_direction(target)}."
-    return f"<b>{body}</b>\n\n<b>ЧІТКО</b>"
+    emoji = EMOJI.get(t, "⚠️")
+    return (
+        f"⚠️ <b>Оновлення щодо загрози</b> ⚠️\n\n"
+        f"{emoji} Додатково {_count_phrase(n, t)} {_direction(target)}.\n\n"
+        f"<b>ЧІТКО</b>"
+    )
 
 
 def format_combo(totals: dict, target: str) -> str:
@@ -107,14 +120,12 @@ def format_combo(totals: dict, target: str) -> str:
     for t in ("BALLISTIC", "HYPER", "AERO", "CRUISE", "UAV", "UNKNOWN"):
         n = totals.get(t, 0)
         if n:
-            lines.append(f"• {_count_phrase(n, t)}")
-    text = (
+            lines.append(f"{EMOJI.get(t, '⚠️')} {_count_phrase(n, t)}")
+    return (
+        f"🚨 <b>Комбінована повітряна загроза</b> 🚨\n\n"
         f"Зафіксовано {_direction(target)}:\n"
         + "\n".join(lines)
-    )
-    return (
-        f"<b>🔴 Комбінована повітряна загроза</b>\n\n"
-        f"{text}\n\n"
+        + "\n\nПройдіть в укриття.\n\n"
         f"<b>ЧІТКО</b>"
     )
 
@@ -123,11 +134,12 @@ def format_summary(totals: dict, target: str) -> str:
     for t in ("BALLISTIC", "HYPER", "AERO", "CRUISE", "UAV", "UNKNOWN"):
         n = totals.get(t, 0)
         if n:
-            parts.append(_count_phrase(n, t))
-    joined = " та ".join(parts) if parts else "цілі"
+            parts.append(f"{EMOJI.get(t, '⚠️')} {_count_phrase(n, t)}")
+    joined = "\n".join(parts) if parts else "цілі"
     return (
-        f"<b>Станом на зараз</b>\n\n"
-        f"Зафіксовано {joined} {_direction(target)}.\n\n"
+        f"⚠️ <b>Станом на зараз</b> ⚠️\n\n"
+        f"{joined}\n"
+        f"{_direction(target).capitalize()}.\n\n"
         f"<b>ЧІТКО</b>"
     )
 
@@ -194,12 +206,16 @@ def ingest_targets(target_type: str, count: int, target: str = "Київ", is_ne
     }
 
 def ingest_combo(buckets: dict, target: str = "Київ") -> dict:
-    """
-    buckets: {"BALLISTIC": 3, "CRUISE": 4, "UAV": 15}
-    """
-    clean = {k: int(v) for k, v in buckets.items() if int(v) > 0}
+    clean = {}
+    for t, n in (buckets or {}).items():
+        t = str(t).upper()
+        if t not in TYPE_UA:
+            t = "UNKNOWN"
+        n = int(n or 0)
+        if n > 0:
+            clean[t] = clean.get(t, 0) + n
     if not clean:
-        return {"action": "IGNORE", "reason": "Порожньо.", "message": ""}
+        return {"action": "IGNORE", "reason": "Немає кількості.", "message": ""}
 
     if len(clean) == 1:
         t, n = next(iter(clean.items()))
@@ -233,26 +249,24 @@ def ingest_combo(buckets: dict, target: str = "Київ") -> dict:
     for t, n in clean.items():
         already = data["totals"].get(t, 0) > 0
         data["totals"][t] = data["totals"].get(t, 0) + n
+        emoji = EMOJI.get(t, "⚠️")
         if already:
             if n == 1:
-                lines.append(f"UPD: +1 {TYPE_UA_ONE[t]} {_direction(target)}.")
+                lines.append(f"{emoji} +1 {TYPE_UA_ONE[t]} {_direction(target)}.")
             else:
-                lines.append(f"UPD: +{n} {TYPE_UA[t]} {_direction(target)}.")
+                lines.append(f"{emoji} +{n} {TYPE_UA[t]} {_direction(target)}.")
         else:
-            lines.append(f"UPD: додатково {_count_phrase(n, t)} {_direction(target)}.")
+            lines.append(f"{emoji} Додатково {_count_phrase(n, t)} {_direction(target)}.")
 
     data["last_update"] = now
     data["updates_count"] = data.get("updates_count", 0) + 1
     save_attack(data)
 
-    msg = "<b>" + "</b>\n\n<b>".join(lines) + "</b>\n\n<b>ЧІТКО</b>"
-    if len(lines) >= 2:
-        msg = format_combo(data["totals"], target)
-        msg = (
-            f"<b>⚠️ Оновлення щодо повітряної загрози</b>\n\n"
-            + "\n".join(lines)
-            + "\n\n<b>ЧІТКО</b>"
-        )
+    msg = (
+        f"⚠️ <b>Оновлення щодо загрози</b> ⚠️\n\n"
+        + "\n".join(lines)
+        + "\n\n<b>ЧІТКО</b>"
+    )
 
     return {
         "action": "UPDATE",
@@ -261,7 +275,6 @@ def ingest_combo(buckets: dict, target: str = "Київ") -> dict:
         "reason": "Комбіноване оновлення.",
         "totals": data["totals"],
     }
-
 
 def close_attack():
     data = load_attack()
