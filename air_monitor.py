@@ -51,12 +51,11 @@ def detect_districts(text: str) -> list:
     return found
 
 def _map_type(obj: dict) -> str:
-    kind = str(obj.get("kind") or obj.get("subkind") or "").lower()
+    kind = str(obj.get("kind") or obj.get("subkind") or "").lower().strip()
     raw = " ".join([
         kind,
         str(obj.get("title") or ""),
         str(obj.get("name") or ""),
-        str(obj.get("type") or ""),
     ]).lower()
 
     if "орешник" in raw or "oreshnik" in raw:
@@ -67,24 +66,15 @@ def _map_type(obj: dict) -> str:
         return "ZIRCON"
     if "іскандер" in raw or "искандер" in raw or "iskander" in raw:
         return "ISKANDER"
-    if "х-22" in raw or "x-22" in raw:
-        return "X22"
-    if "х-101" in raw or "x-101" in raw or "х-555" in raw:
-        return "X101"
-    if kind in ("drone_piston", "drone_jet") or "drone" in kind:
-        return "UAV"
-    if kind == "missile_cruise" or "cruise" in kind:
+    if kind == "missile_cruise":
         return "CRUISE"
-    if kind == "missile_ballistic" or "ballistic" in kind:
+    if kind == "missile_ballistic":
         return "BALLISTIC"
-    if "hypersonic" in raw or "гіпер" in raw:
-        return "HYPER"
-    if any(w in raw for w in ["shahed", "шахед", "бпла", "uav"]):
+    if kind in ("drone_piston", "drone_jet") or kind.startswith("drone"):
         return "UAV"
-    if "ракет" in raw or "missile" in raw:
-        return "UNKNOWN"
+    if any(w in raw for w in ["shahed", "шахед", "бпла", "uav", "geran", "геран"]):
+        return "UAV"
     return "UAV"
-
 
 def fetch_live_objects() -> list:
     objects = []
