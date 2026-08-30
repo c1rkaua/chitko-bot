@@ -1036,8 +1036,17 @@ def format_threat_now(result: dict) -> str:
     else:
         head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
     extra = ""
-        if hints:
-            extra = f"Зараз курс: {hints[0]}.\n"
+    if hints:
+        extra = f"Зараз курс: {hints[0]}.\n"
+    body = "\n".join(lines) if lines else "Загроза підтверджується моніторами."
+    return (
+        f"{head}\n\n"
+        f"Київ. Станом на зараз:\n"
+        f"{body}\n"
+        f"{extra}"
+        f"\nПройдіть в укриття.\n\n"
+        f"<b>ЧІТКО</b>"
+    )
 
 async def pin_threat(msg_id):
     if not msg_id:
