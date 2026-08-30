@@ -9,16 +9,16 @@ import os
 PUBLISHED_FILE = "published_ids.json"
 
 TG_SOURCES = {
-    "lachentyt": {"name": "Лачен пише", "trust": 6.5, "bias": "civilian"},
-    "vanek_nikolaev": {"name": "Миколаївський Ванек", "trust": 6.5, "bias": "civilian"},
-    "times_ukraina": {"name": "Times of Ukraine", "trust": 6.2, "bias": "civilian"},
-    "truexanewsua": {"name": "Труха Україна", "trust": 6.5, "bias": "civilian"},
-    "insiderUKR": {"name": "Інсайдер UA", "trust": 6.2, "bias": "civilian"},
-    "kyivoperat": {"name": "Київ Оперативний", "trust": 7.4, "bias": "civilian"},
-    "k_dvizh": {"name": "Киевский Движ", "trust": 6.8, "bias": "civilian"},
-    "NovynaUKR": {"name": "НОВИНА", "trust": 7.0, "bias": "civilian"},
-    "uniannet": {"name": "УНІАН", "trust": 7.1, "bias": "civilian"},
-    "obolon_info": {"name": "Оболонь INFO", "trust": 6.6, "bias": "civilian"},
+    "kyivoperat": {"name": "Київ Оперативний", "trust": 9.0, "bias": "civilian"},
+    "NovynaUKR": {"name": "НОВИНА", "trust": 8.9, "bias": "civilian"},
+    "uniannet": {"name": "УНІАН", "trust": 8.8, "bias": "civilian"},
+    "obolon_info": {"name": "Оболонь INFO", "trust": 8.7, "bias": "civilian"},
+    "k_dvizh": {"name": "Киевский Движ", "trust": 8.6, "bias": "civilian"},
+    "truexanewsua": {"name": "Труха Україна", "trust": 8.6, "bias": "civilian"},
+    "lachentyt": {"name": "Лачен пише", "trust": 8.4, "bias": "civilian"},
+    "times_ukraina": {"name": "Times of Ukraine", "trust": 8.4, "bias": "civilian"},
+    "insiderUKR": {"name": "Інсайдер UA", "trust": 8.4, "bias": "civilian"},
+    "vanek_nikolaev": {"name": "Миколаївський Ванек", "trust": 8.2, "bias": "civilian"},
 }
 
 CIVILIAN_KEYS = [
@@ -332,6 +332,11 @@ def fetch_tg_channel_posts() -> list:
             media = extract_tg_media(raw)
             title = text.split(".")[0].strip()[:140]
             event_id = hashlib.md5(f"tg:{username}:{title[:80]}".encode()).hexdigest()
+            trust = float(meta.get("trust") or 8.6)
+            try:
+                score = float(calculate_importance(title, trust))
+            except Exception:
+                score = 70.0
             news = {
                 "event_id": event_id,
                 "title": title,
@@ -346,7 +351,7 @@ def fetch_tg_channel_posts() -> list:
                 "image_url": media["photos"][0] if media["photos"] else None,
                 "media_urls": media["photos"],
                 "video_url": media["video"],
-                "final_score": 62.0,
+                "final_score": score,
             }
             news = apply_editorial_caps(news)
             out.append(news)
@@ -1246,6 +1251,8 @@ def apply_editorial_caps(news: dict) -> dict:
     ])
     filler_geo = any(x in t for x in [
         "санду", "кишинів", "молдов", "захаров", "вірмен", "patriot",
+        "брянськ", "брянск", "ленінград", "ленинград", "кіриш", "кириш",
+        "ростов", "бєлгород", "белгород",
     ])
 
     if civilian:
@@ -1260,14 +1267,23 @@ def apply_editorial_caps(news: dict) -> dict:
     else:
         news["bucket"] = "other"
 
+    tg_names = (
+        "київ оперативний", "новина", "уніан", "оболонь", "движ",
+        "труха", "лачен", "times", "інсайдер", "ванек",
+        "kyivoperat", "novynaukr", "uniannet", "obolon",
+        "k_dvizh", "truexa", "lachen", "insider", "vanek",
+    )
+    if any(x in source for x in tg_names):
+        score = min(100, score + 8)
+        news["from_tg"] = True
+
     if "suspilne" in source or "суспільне" in source:
-        if news.get("bucket") == "war_filler":
-            score = min(score, 45)
-        elif news.get("bucket") == "other":
-            score = min(score, 68)
+        score = min(score, 58)
+        if news.get("bucket") in ("war_filler", "other"):
+            score = min(score, 48)
 
     if filler_geo and news.get("bucket") != "civilian":
-        score = min(score, 48)
+        score = min(score, 40)
         news["bucket"] = "war_filler"
 
     news["final_score"] = score
