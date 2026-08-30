@@ -173,19 +173,24 @@ def is_breaking(news: dict) -> bool:
     if any(x in blob for x in (
         "вшанувал", "пам'ять", "память", "меморіал",
         "алея пам", "день пам", "поклали квіт",
+        "непал", "китай", "інді", "пакистан",
+        "голівуд", "оскар", "епал", "повін"
     )):
         return False
     keys = [
-        "загибл", "померл", "вбито", "загинула",
         "удар по києв", "приліт", "попадання",
         "вибух у києв", "вибухи в києв",
-        "дворіч", "дитин", "школяр",
         "масована атака", "балістик",
-        "дтп",
+        "дворічн",
     ]
-    if score >= 88:
+    kyiv_hit = any(k in blob for k in keys)
+    local_dead = (
+        ("загибл" in blob or "померл" in blob)
+        and any(x in blob for x in ("київ", "харків", "одес", "дніпр", "львів", "тцк", "дтп"))
+    )
+    if score >= 92 and kyiv_hit:
         return True
-    return any(k in blob for k in keys)
+    return kyiv_hit or local_dead
 
 def extract_tg_media(chunk: str) -> dict:
     import re
