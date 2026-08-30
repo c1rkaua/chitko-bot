@@ -1035,14 +1035,13 @@ def format_threat_now(result: dict) -> str:
         head = "🚨 <b>Повітряна загроза</b> 🚨"
     else:
         head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
-    where = "Київ"
     extra = ""
     if hints:
         extra = "Орієнтир: " + ", ".join(hints) + ".\n"
     body = "\n".join(lines) if lines else "Загроза підтверджується моніторами."
     return (
         f"{head}\n\n"
-        f"{where}. Станом на зараз:\n"
+        f"Київ. Станом на зараз:\n"
         f"{body}\n"
         f"{extra}"
         f"\nПройдіть в укриття.\n\n"
