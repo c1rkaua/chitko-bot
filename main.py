@@ -1006,12 +1006,11 @@ def save_last_auto(ts: float) -> None:
 def format_threat_now(result: dict) -> str:
     from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI
 
-    district = result.get("district") or "Київ"
     totals = result.get("totals_now") or result.get("totals") or {}
     hints = result.get("hints") or []
     hints_blob = " ".join(str(h) for h in hints).lower()
     allow_missile = any(
-        w in hints_blob for w in ("ракет", "баліст", "кінжал", "іскандер")
+        w in hints_blob for w in ("ракет", "баліст", "кінжал", "іскандер", "циркон")
     )
     lines = []
     for t in (
@@ -1019,7 +1018,10 @@ def format_threat_now(result: dict) -> str:
         "X101", "X22", "ORESHNIK", "HYPER", "AERO",
         "BALLISTIC", "CRUISE", "UNKNOWN",
     ):
-        if t in ("CRUISE", "BALLISTIC", "ISKANDER", "KINZHAL", "X101", "X22", "ZIRCON", "ORESHNIK", "HYPER") and not allow_missile:
+        if t in (
+            "CRUISE", "BALLISTIC", "ISKANDER", "KINZHAL",
+            "X101", "X22", "ZIRCON", "ORESHNIK", "HYPER",
+        ) and not allow_missile:
             continue
         n = int(totals.get(t) or 0)
         if n <= 0:
@@ -1027,23 +1029,23 @@ def format_threat_now(result: dict) -> str:
         emoji = EMOJI.get(t, "⚠️")
         name = TYPE_UA_ONE.get(t) if n == 1 else TYPE_UA.get(t)
         lines.append(f"{emoji} {n} {name}")
-    if not lines:
+    if not lines and not hints:
         return ""
     if result.get("action") == "PUBLISH":
         head = "🚨 <b>Повітряна загроза</b> 🚨"
     else:
         head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
-    where = "Київ" if district == "Київ" else district
+    where = "Київ"
     extra = ""
     if hints:
         extra = "Орієнтир: " + ", ".join(hints) + ".\n"
+    body = "\n".join(lines) if lines else "Загроза підтверджується моніторами."
     return (
         f"{head}\n\n"
         f"{where}. Станом на зараз:\n"
-        + "\n".join(lines)
-        + "\n"
-        + extra
-        + "\nПройдіть в укриття.\n\n"
+        f"{body}\n"
+        f"{extra}"
+        f"\nПройдіть в укриття.\n\n"
         f"<b>ЧІТКО</b>"
     )
 
