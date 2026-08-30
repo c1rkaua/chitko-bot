@@ -145,6 +145,10 @@ def poll_new_targets() -> list:
 MONITOR_LAST = {"sig": "", "at": 0.0}
 
 KYIV_DISTRICTS = [
+    ("івасюк", "Оболонь, Івасюка"),
+    ("на центр", "центр"),
+    ("на цент", "центр"),
+    ("трою", "Троєщина"),
     ("троєщин", "Троєщина"),
     ("оболон", "Оболонь"),
     ("дарниц", "Дарниця"),
@@ -152,7 +156,9 @@ KYIV_DISTRICTS = [
     ("святошин", "Святошин"),
     ("печерськ", "Печерськ"),
     ("поділ", "Поділ"),
+    ("подольск", "Поділ"),
     ("голосіїв", "Голосіїв"),
+    ("голосеев", "Голосіїв"),
     ("солом'ян", "Солом'янка"),
     ("солом’ян", "Солом'янка"),
     ("деснян", "Деснянський"),
@@ -175,9 +181,10 @@ KYIV_DISTRICTS = [
     ("лук’ян", "Лук'янівка"),
     ("лук'ян", "Лук'янівка"),
     ("конч", "Конча-Заспа"),
-    ("голосіїв", "Голосіїв"),
     ("шуляв", "Шулявка"),
-    ("теремк", "Теремки"),
+    ("трухан", "Труханів острів"),
+    ("наталк", "парк Наталка"),
+    ("виговськ", "Виговського"),
 ]
 
 KYIV_MONITOR = [
@@ -224,8 +231,10 @@ def fetch_tg_districts(url: str) -> list:
     chunks = re.split(r'class="tgme_widget_message_text', html)
     found = []
     skip = (
-        "вишгород", "бровар", "ірпін", "фастів", "київщин",
+        "ірпін", "фастів", "київщин",
         "област", "димерк", "лебедів",
+        "повітряна тривога", "air siren",
+        "відбій повітряної",
     )
     for chunk in chunks[1:8]:
         raw = re.sub(r"<[^>]+>", " ", chunk)
@@ -249,7 +258,15 @@ def fetch_kievreal_districts() -> list:
 
 def fetch_district_hints() -> list:
     merged = []
-    for name in fetch_eradar_districts() + fetch_kievreal_districts():
-        if name not in merged:
-            merged.append(name)
+    urls = (
+        "https://t.me/s/eradarrua",
+        "https://t.me/s/kievreal1",
+        "https://t.me/s/k_dvizh",
+        "https://t.me/s/kyivoperat",
+        "https://t.me/s/obolon_info",
+    )
+    for url in urls:
+        for name in fetch_tg_districts(url):
+            if name not in merged:
+                merged.append(name)
     return merged
