@@ -1177,7 +1177,34 @@ async def scheduled_air():
         await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
     except Exception as e:
         print(f"AIR send {e}")
-            
+
+def seed_titles_from_channel() -> list:
+    import re
+    import requests
+
+    out = []
+    try:
+        html = requests.get(
+            "https://t.me/s/chitko_ua",
+            timeout=12,
+            headers={"User-Agent": "Mozilla/5.0"},
+        ).text
+    except Exception as e:
+        print(f"SEED channel fail {e}")
+        return out
+    chunks = re.split(r'class="tgme_widget_message_text', html)
+    for chunk in chunks[1:25]:
+        raw = re.sub(r"<br\s*/?>", "\n", chunk, flags=re.I)
+        raw = re.sub(r"<[^>]+>", " ", raw)
+        raw = re.sub(r"\s+", " ", raw).strip()
+        if len(raw) < 20:
+            continue
+        title = raw.split(".")[0].strip()[:140]
+        if title and title not in out:
+            out.append(title)
+    print(f"SEED channel {len(out)}")
+    return out
+
 async def main():
     print("Я заработал")
     try:
@@ -1185,12 +1212,21 @@ async def main():
         loaded = load_recent_titles() or []
         LAST_PUB_TITLES.clear()
         LAST_PUB_TITLES.extend(loaded[-80:])
+        for title in seed_titles_from_channel():
+            if title not in LAST_PUB_TITLES:
+                LAST_PUB_TITLES.append(title)
         print(f"SEED titles {len(LAST_PUB_TITLES)}")
     except Exception as e:
         print(f"SEED titles fail {e}")
 
     LAST_AUTO_NEWS["at"] = load_last_auto()
-    print(f"SEED last_auto {int(LAST_AUTO_NEWS['at'])}")
+    if not LAST_AUTO_NEWS["at"]:
+        import time
+        LAST_AUTO_NEWS["at"] = time.time()
+        save_last_auto(LAST_AUTO_NEWS["at"])
+        print("SEED last_auto hold 30min after boot")
+    else:
+        print(f"SEED last_auto {int(LAST_AUTO_NEWS['at'])}")
 
     scheduler.add_job(
         scheduled_brief,
@@ -1207,7 +1243,6 @@ async def main():
     scheduler.start()
     print("Планувальник запущено")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
