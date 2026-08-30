@@ -1048,6 +1048,27 @@ def format_threat_now(result: dict) -> str:
         f"<b>ЧІТКО</b>"
     )
 
+async def pin_threat(msg_id):
+    if not msg_id:
+        return
+    try:
+        await bot.pin_chat_message(
+            chat_id=CHANNEL_ID,
+            message_id=msg_id,
+            disable_notification=True,
+        )
+        print(f"THREAT pinned {msg_id}")
+    except Exception as e:
+        print(f"THREAT pin fail {e}")
+
+
+async def unpin_threat():
+    try:
+        await bot.unpin_all_chat_messages(chat_id=CHANNEL_ID)
+        print("THREAT unpinned")
+    except Exception as e:
+        print(f"THREAT unpin fail {e}")
+
 async def scheduled_threats():
     import time
     from air_engine import fetch_official_alerts, load_state
@@ -1066,6 +1087,9 @@ async def scheduled_threats():
 
     if (not kyiv_api) or (not kyiv_state):
         slot = LAST_THREAT.get("Київ") or {}
+        if slot.get("pinned"):
+            await unpin_threat()
+            slot["pinned"] = False
         slot["text"] = ""
         LAST_THREAT["Київ"] = slot
         return
@@ -1088,8 +1112,13 @@ async def scheduled_threats():
             continue
 
         key = "Київ"
-        slot = LAST_THREAT.setdefault(key, {"msg_id": None, "at": 0.0, "text": ""})
+        slot = LAST_THREAT.setdefault(
+            key, {"msg_id": None, "at": 0.0, "text": "", "pinned": False}
+        )
         if slot.get("text") == text:
+            if slot.get("msg_id") and not slot.get("pinned"):
+                await pin_threat(slot["msg_id"])
+                slot["pinned"] = True
             continue
         if slot.get("msg_id") and now - slot.get("at", 0) < 120:
             continue
@@ -1104,6 +1133,8 @@ async def scheduled_threats():
                 )
                 slot["at"] = now
                 slot["text"] = text
+                await pin_threat(slot["msg_id"])
+                slot["pinned"] = True
                 print("THREAT edited Kyiv")
                 continue
             except Exception as e:
@@ -1114,6 +1145,8 @@ async def scheduled_threats():
             slot["msg_id"] = sent.message_id
             slot["at"] = now
             slot["text"] = text
+            await pin_threat(sent.message_id)
+            slot["pinned"] = True
         except Exception as e:
             print(f"THREAT send error: {e}")
             continue
