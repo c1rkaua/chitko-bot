@@ -14,6 +14,11 @@ TG_SOURCES = {
     "times_ukraina": {"name": "Times of Ukraine", "trust": 6.2, "bias": "civilian"},
     "truexanewsua": {"name": "Труха Україна", "trust": 6.5, "bias": "civilian"},
     "insiderUKR": {"name": "Інсайдер UA", "trust": 6.2, "bias": "civilian"},
+    "kyivoperat": {"name": "Київ Оперативний", "trust": 7.4, "bias": "civilian"},
+    "k_dvizh": {"name": "Киевский Движ", "trust": 6.8, "bias": "civilian"},
+    "NovynaUKR": {"name": "НОВИНА", "trust": 7.0, "bias": "civilian"},
+    "uniannet": {"name": "УНІАН", "trust": 7.1, "bias": "civilian"},
+    "obolon_info": {"name": "Оболонь INFO", "trust": 6.6, "bias": "civilian"},
 }
 
 CIVILIAN_KEYS = [
@@ -24,7 +29,20 @@ CIVILIAN_KEYS = [
     "хабар", "взятк", "корупц", "коррупц",
     "світло", "отключен", "відключен", "тариф", "пенсі", "пенси",
     "маршрутка", "автобус", "зіткнен", "столкновен",
+    "київ", "киев", "оболон", "подол", "голосіїв", "дарниц",
+    "івасюк", "винагород", "виговськ",
+    "влучан", "уламк", "приліт", "загорян", "горить",
+    "корд", "розшук", "зникл", "евкуац", "евакуац",
+    "багатоповерх", "квартир",
 ]
+
+TRACKER_SKIP = [
+    "на центр", "на оболонь", "гучно", "відбій", "отбой",
+    "тривога йбн", "повітряна тривога", "air siren",
+    "1 реактив", "полетів в область", "підписатися",
+    "присылайте контент", "по рекламе",
+]
+
 WAR_FILLER_KEYS = [
     "генштаб зведення", "за добу знешкоджено", "окупанти не полишають",
     "триває відсіч", "на купянському",
@@ -286,7 +304,16 @@ def fetch_tg_channel_posts() -> list:
                 LAST_TG_STATS["skipped"] += 1
                 continue
             low = text.lower()
-            if any(k in low for k in WAR_FILLER_KEYS) or not any(k in low for k in CIVILIAN_KEYS):
+            if any(k in low for k in TRACKER_SKIP):
+                LAST_TG_STATS["skipped"] += 1
+                continue
+            if any(k in low for k in WAR_FILLER_KEYS):
+                LAST_TG_STATS["skipped"] += 1
+                continue
+            if not any(k in low for k in CIVILIAN_KEYS):
+                LAST_TG_STATS["skipped"] += 1
+                continue
+            if len(text) < 80 and any(k in low for k in ("вибух", "гучно", "на центр")):
                 LAST_TG_STATS["skipped"] += 1
                 continue
 
