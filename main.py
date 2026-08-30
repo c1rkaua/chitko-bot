@@ -900,7 +900,7 @@ def pick_cycle_news(items: list) -> list:
     return out[:3]
 
 def cluster_unique(items: list) -> list:
-    from news_engine import is_same_story, load_recent_titles
+    from news_engine import is_same_story, load_recent_titles, news_fingerprint
 
     seen = list(LAST_PUB_TITLES)
     try:
@@ -909,75 +909,87 @@ def cluster_unique(items: list) -> list:
         pass
     out = []
     for n in items:
-        title = (n.get("title_chitko") or n.get("title") or "").strip()
-        if len(title) < 8:
+        fp = news_fingerprint(n)
+        if len(fp) < 12:
             continue
-        if any(is_same_story(title, old) for old in seen):
-            print(f"CLUSTER skip: {title[:80]}")
+        if any(is_same_story(fp, old) for old in seen):
+            print(f"CLUSTER skip: {fp[:80]}")
             continue
-        seen.append(title)
+        seen.append(fp)
         out.append(n)
     return out
 
+
+NEWS_LOCK = {"on": False}
+
+
 async def scheduled_news():
     import time
-    from news_engine import is_breaking, is_same_story, prepare_chitko_news
+    from news_engine import is_breaking, is_same_story, prepare_chitko_news, news_fingerprint
 
-    news_list = get_top_news_for_brief(12)
-    news_list = pick_cycle_news(news_list)
-    news_list = cluster_unique(news_list)
-    now = time.time()
-    sent = 0
+    if NEWS_LOCK.get("on"):
+        print("NEWS lock skip")
+        return
+    NEWS_LOCK["on"] = True
+    try:
+        news_list = get_top_news_for_brief(12)
+        news_list = pick_cycle_news(news_list)
+        news_list = cluster_unique(news_list)
+        now = time.time()
+        sent = 0
 
-    for news in news_list:
-        score = float(news.get("final_score") or 0)
-        if score < 60:
-            continue
-        title = (news.get("title_chitko") or news.get("title") or "").strip()
-        if len(title) < 8:
-            continue
-        if any(is_same_story(title, old) for old in LAST_PUB_TITLES):
-            print(f"DEDUP mem: {title[:80]}")
-            continue
+        for news in news_list:
+            score = float(news.get("final_score") or 0)
+            if score < 60:
+                continue
+            fp = news_fingerprint(news)
+            if any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
+                print(f"DEDUP mem: {fp[:80]}")
+                continue
 
-        prepared = prepare_chitko_news(news)
-        if not prepared:
-            continue
-        news = prepared
-        title = (news.get("title_chitko") or news.get("title") or "").strip()
+            prepared = prepare_chitko_news(news)
+            if not prepared:
+                continue
+            news = prepared
+            fp2 = news_fingerprint(news)
+            if any(is_same_story(fp2, old) for old in LAST_PUB_TITLES):
+                print(f"DEDUP after rewrite: {fp2[:80]}")
+                continue
 
-        formatted = format_news_post(news)
-        if not formatted or "⚡️" not in formatted:
-            continue
+            formatted = format_news_post(news)
+            if not formatted or "⚡️" not in formatted:
+                continue
 
-        breaking = is_breaking(news)
-        if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
-            continue
-        if not breaking and sent >= 1:
-            continue
+            breaking = is_breaking(news)
+            if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
+                continue
+            if sent >= 1:
+                print("DEDUP cap one per cycle")
+                break
 
-        await send_news_to_channel(news, formatted)
-        LAST_AUTO_NEWS["at"] = now
-        save_last_auto(now)
-        LAST_PUB_TITLES.append(title)
-        if len(LAST_PUB_TITLES) > 80:
-            del LAST_PUB_TITLES[:-80]
-        published_ids.add(news["event_id"])
-        save_published_ids(published_ids)
-        recent = load_recent_titles()
-        recent.append(title)
-        save_recent_titles(recent)
-        sent += 1
-        if not breaking:
+            await send_news_to_channel(news, formatted)
+            LAST_AUTO_NEWS["at"] = now
+            save_last_auto(now)
+            LAST_PUB_TITLES.append(fp2)
+            if len(LAST_PUB_TITLES) > 80:
+                del LAST_PUB_TITLES[:-80]
+            published_ids.add(news["event_id"])
+            save_published_ids(published_ids)
+            recent = load_recent_titles()
+            recent.append(fp2)
+            save_recent_titles(recent)
+            sent += 1
             break
 
-    try:
-        await bot.send_message(
-            ADMIN_GROUP_ID,
-            f"Цикл новин.\nКандидати: {len(news_list)}\nАвто: {sent}",
-        )
-    except Exception:
-        pass
+        try:
+            await bot.send_message(
+                ADMIN_GROUP_ID,
+                f"Цикл новин.\nКандидати: {len(news_list)}\nАвто: {sent}",
+            )
+        except Exception:
+            pass
+    finally:
+        NEWS_LOCK["on"] = False
 
 LAST_THREAT = {}
 LAST_AUTO_NEWS = {"at": 0.0}
@@ -1029,16 +1041,30 @@ def format_threat_now(result: dict) -> str:
         emoji = EMOJI.get(t, "⚠️")
         name = TYPE_UA_ONE.get(t) if n == 1 else TYPE_UA.get(t)
         lines.append(f"{emoji} {n} {name}")
+
+    total_n = 0
+    for v in totals.values():
+        try:
+            total_n += int(v or 0)
+        except Exception:
+            pass
+    if total_n >= 12 or (total_n >= 8 and not hints):
+        lines = []
+
     if not lines and not hints:
         return ""
     if result.get("action") == "PUBLISH":
         head = "🚨 <b>Повітряна загроза</b> 🚨"
     else:
         head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
+
     extra = ""
     if hints:
         extra = f"Зараз курс: {hints[0]}.\n"
-    body = "\n".join(lines) if lines else "Загроза підтверджується моніторами."
+        for h in hints[1:]:
+            extra += f"{h}.\n"
+
+    body = "\n".join(lines) if lines else "Загроза над містом, уточнюємо курс."
     return (
         f"{head}\n\n"
         f"Київ. Станом на зараз:\n"

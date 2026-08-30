@@ -264,6 +264,12 @@ KYIV_DISTRICTS = [
     ("борщагівк", "Борщагівка"),
     ("петрівк", "Петрівка"),
     ("почайна", "Почайна"),
+    ("вишгород", "Вишгород"),
+    ("видубич", "Видубичі"),
+    ("олімпійськ", "Олімпійська"),
+    ("олимпийск", "Олімпійська"),
+    ("палац спорт", "Палац спорту"),
+    ("львівськ площ", "Львівська площа"),
 ]
 
 KYIV_MONITOR = [
@@ -353,20 +359,29 @@ def fetch_latest_course() -> list:
         "підписатися", "присылайте", "реклам", "купим",
         "повітряна тривога", "відбій", "отбой",
     )
-    for chunk in chunks[1:6]:
+    hit_keys = ("вибух", "взрыв", "приліт", "прилет", "гучно на", "влучан", "гучно")
+    course = []
+    hit = []
+    for chunk in chunks[1:8]:
         raw = re.sub(r"<[^>]+>", " ", chunk)
         raw = re.sub(r"\s+", " ", raw).strip()
         low = raw.lower()
         if any(s in low for s in skip):
             continue
-        if len(raw) < 4:
-            continue
         found = detect_districts(raw)
-        if found:
-            print(f"COURSE now {found[0]}")
-            return [found[0]]
-    return []
-
+        if not found:
+            continue
+        if any(k in low for k in hit_keys):
+            if not hit:
+                hit = [f"Вибух: {found[0]}"]
+        elif not course:
+            course = [found[0]]
+        if course and hit:
+            break
+    out = course + hit
+    if out:
+        print(f"COURSE now {out}")
+    return out
 
 def fetch_district_hints() -> list:
     latest = fetch_latest_course()

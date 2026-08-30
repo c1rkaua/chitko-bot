@@ -168,29 +168,31 @@ def normalize_title(text: str) -> str:
     }
     return " ".join(w for w in text.split() if w not in stop and len(w) > 1)
 
+def story_tokens(text: str) -> set:
+    norm = normalize_title(text)
+    return {w for w in norm.split() if len(w) >= 4}
+
 
 def is_same_story(a: str, b: str) -> bool:
-    na, nb = normalize_title(a), normalize_title(b)
-    if not na or not nb:
-        return False
-    if na[:28] in nb or nb[:28] in na:
-        return True
-    sa, sb = set(na.split()), set(nb.split())
+    sa, sb = story_tokens(a), story_tokens(b)
     if not sa or not sb:
         return False
     inter = sa & sb
     if len(inter) >= 3:
         return True
-    keys = {
-        "померл", "загибл", "бпла", "оболон", "київ", "дитин", "дворіч",
-        "закуп", "азс", "харків", "мила", "пансіонат",
-        "дтп", "тцк", "пожеж", "вибух", "світло", "корупц",
-        "одес", "студент", "меморіал", "ківалов", "вшанув", "алея",
-        "водазавод", "мила", "завод", "стоп",
-    }
-    hit_a = {k for k in keys if any(k in w for w in sa)}
-    hit_b = {k for k in keys if any(k in w for w in sb)}
-    return len(hit_a & hit_b) >= 2
+    j = len(inter) / max(1, min(len(sa), len(sb)))
+    if j >= 0.45 and len(inter) >= 2:
+        return True
+    return False
+
+
+def news_fingerprint(news: dict) -> str:
+    return " ".join([
+        news.get("title_chitko") or "",
+        news.get("title") or "",
+        (news.get("text") or news.get("body") or "")[:280],
+    ])
+
 
 def is_breaking(news: dict) -> bool:
     score = float(news.get("final_score") or 0)
@@ -201,26 +203,21 @@ def is_breaking(news: dict) -> bool:
         news.get("body") or "",
     ]).lower()
     if any(x in blob for x in (
+        "вчора", "позавчора", "напередодні",
         "вшанувал", "пам'ять", "память", "меморіал",
-        "алея пам", "день пам", "поклали квіт",
+        "забіг", "алея пам", "день пам", "поклали квіт",
         "непал", "китай", "інді", "пакистан",
-        "голівуд", "оскар", "епал", "повін"
+        "голівуд", "оскар", "повін",
     )):
         return False
     keys = [
-        "удар по києв", "приліт", "попадання",
-        "вибух у києв", "вибухи в києв",
-        "масована атака", "балістик",
-        "дворічн",
+        "тривога в києві",
+        "балістик по києв",
+        "масована атака",
+        "удар по києву",
+        "приліт у києв",
     ]
-    kyiv_hit = any(k in blob for k in keys)
-    local_dead = (
-        ("загибл" in blob or "померл" in blob)
-        and any(x in blob for x in ("київ", "харків", "одес", "дніпр", "львів", "тцк", "дтп"))
-    )
-    if score >= 92 and kyiv_hit:
-        return True
-    return kyiv_hit or local_dead
+    return score >= 88 and any(k in blob for k in keys)
 
 def extract_tg_media(chunk: str) -> dict:
     import re
