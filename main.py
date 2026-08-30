@@ -42,6 +42,18 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone="Europe/Kyiv")
 
+def is_english_post(news: dict, formatted: str) -> bool:
+    blob = " ".join([
+        news.get("title_chitko") or "",
+        news.get("title") or "",
+        formatted or "",
+    ])
+    letters = [c for c in blob if c.isalpha()]
+    if len(letters) < 20:
+        return False
+    latin = sum(1 for c in letters if "a" <= c.lower() <= "z")
+    return latin / len(letters) > 0.45
+
 async def publish_news_post(news: dict, formatted: str):
     await send_news_to_channel(news, formatted)
 # ======================
@@ -755,7 +767,20 @@ async def scheduled_evening_digest():
     except Exception as e:
         print(f"DIGEST send {e}")
         await bot.send_message(ADMIN_GROUP_ID, f"Дайджест упав: {e}")
-        
+
+def is_english_post(news: dict, formatted: str) -> bool:
+    blob = " ".join([
+        news.get("title_chitko") or "",
+        news.get("title") or "",
+        formatted or "",
+    ])
+    letters = [c for c in blob if c.isalpha()]
+    if len(letters) < 20:
+        return False
+    latin = sum(1 for c in letters if "a" <= c.lower() <= "z")
+    return latin / len(letters) > 0.45
+
+
 async def send_news_to_channel(news: dict, formatted: str):
     import os
     import tempfile
@@ -765,6 +790,10 @@ async def send_news_to_channel(news: dict, formatted: str):
     title = (news.get("title_chitko") or news.get("title") or "").strip()
     if len(title) < 8 or not formatted or "⚡️" not in formatted:
         print("SEND skip")
+        return
+
+    if is_english_post(news, formatted):
+        print("SEND skip english")
         return
 
     def download(url: str, suffix=".jpg"):
@@ -779,6 +808,73 @@ async def send_news_to_channel(news: dict, formatted: str):
         except Exception as e:
             print(f"DL fail {e}")
             return None
+
+    def watermark_file(path: str) -> str:
+        try:
+            fd, out = tempfile.mkstemp(suffix=".jpg")
+            os.close(fd)
+            result = apply_watermark(path, out)
+            return result or path
+        except Exception as e:
+            print(f"WM file fail {e}")
+            return path
+
+    photos = [u for u in (news.get("media_urls") or []) if u]
+    if not photos and news.get("image_url") and not is_bad_source_image(news.get("image_url")):
+        photos = [news["image_url"]]
+    video = news.get("video_url")
+    paths = []
+
+    try:
+        if video:
+            vpath = download(video, suffix=".mp4")
+            if vpath:
+                paths.append(vpath)
+                await bot.send_video(
+                    CHANNEL_ID, video=FSInputFile(vpath), caption=formatted, parse_mode="HTML"
+                )
+                print("SEND video")
+                return
+
+        files = []
+        for url in photos[:4]:
+            path = download(url)
+            if not path:
+                continue
+            paths.append(path)
+            marked = watermark_file(path)
+            if marked != path:
+                paths.append(marked)
+            files.append(marked)
+
+        if len(files) >= 2:
+            media = [
+                InputMediaPhoto(media=FSInputFile(files[0]), caption=formatted, parse_mode="HTML")
+            ]
+            for p in files[1:]:
+                media.append(InputMediaPhoto(media=FSInputFile(p)))
+            await bot.send_media_group(CHANNEL_ID, media=media)
+            print(f"SEND album {len(media)}")
+            return
+
+        if len(files) == 1:
+            await bot.send_photo(
+                CHANNEL_ID, photo=FSInputFile(files[0]), caption=formatted, parse_mode="HTML"
+            )
+            return
+
+        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    except Exception as e:
+        print(f"SEND fail {e}")
+        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+    finally:
+        for p in paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+        
+
 
     def watermark_file(path: str) -> str:
         try:

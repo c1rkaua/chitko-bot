@@ -1261,7 +1261,9 @@ def apply_editorial_caps(news: dict) -> dict:
     filler_geo = any(x in t for x in [
         "санду", "кишинів", "молдов", "захаров", "вірмен", "patriot",
         "брянськ", "брянск", "ленінград", "ленинград", "кіриш", "кириш",
-        "ростов", "бєлгород", "белгород",
+        "ростов", "бєлгород", "белгород","oryol", "rostov", "yeisk", "leningrad",
+        "орел", "єйськ", "ейськ", "башкортостан", "архангельськ",
+        "bashkort", "arkhangelsk", "zelenskyy",
     ])
 
     if civilian:
