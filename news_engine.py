@@ -213,41 +213,53 @@ def is_breaking(news: dict) -> bool:
 def extract_tg_media(chunk: str) -> dict:
     import re
 
+    low_head = (chunk or "")[:400].lower()
     video = None
     m = re.search(
         r'<video[^>]+src=["\'](https://cdn4\.telesco\.pe/file/[^"\']+)',
-        chunk,
+        chunk or "",
         re.I,
     )
     if not m:
         m = re.search(
             r'(https://cdn4\.telesco\.pe/file/[^"\s\']+\.mp4\?[^"\s\']+)',
-            chunk,
+            chunk or "",
             re.I,
         )
-    if m:
+    if not m:
+        m = re.search(
+            r'(https://cdn4\.telesco\.pe/file/[A-Za-z0-9_\-]+(?:\?[^"\s\']+)?)',
+            chunk or "",
+            re.I,
+        )
+        if m and ("video" in low_head or "tgme_widget_message_video" in (chunk or "").lower()):
+            video = m.group(1)
+    elif m:
         video = m.group(1)
 
-    if video:
-        print(f"TG video ok {video[:60]}")
+    if video and "userpic" not in video.lower():
+        print(f"TG video ok {video[:70]}")
         return {"photos": [], "video": video}
 
     photos = []
     seen = set()
-    parts = re.split(r"tgme_widget_message_photo", chunk)
+    parts = re.split(r"tgme_widget_message_photo", chunk or "")
     for block in parts[1:]:
-        if "userpic" in block[:200].lower():
+        head = block[:300].lower()
+        if "userpic" in head or "emoji" in head:
             continue
         raw = re.findall(
             r"background-image:url\('?(https?://cdn4\.telesco\.pe/file/[^')\s]+)'?\)",
             block,
         )
         for u in raw:
-            if ".mp4" in u or "emoji" in u or "userpic" in u:
+            ul = u.lower()
+            if ".mp4" in ul or "emoji" in ul or "userpic" in ul:
                 continue
             if u not in seen:
                 seen.add(u)
                 photos.append(u)
+    print(f"TG photos {len(photos)}")
     return {"photos": photos[:4], "video": None}
 
 def fetch_tg_channel_posts() -> list:
@@ -849,18 +861,19 @@ def apply_watermark(image_path: str, output_path: str) -> str:
         return image_path
 
 def is_bad_source_image(url: str) -> bool:
-    if not url:
+    u = (url or "").lower()
+    if not u:
         return True
-    u = url.lower()
-    bad = [
+    bad = (
         "suspilne.media",
-        "suspilne.novyny",
-        "corp.suspilne",
-        "suspilne.cdn",
-        "cdn4.suspilne",
-    ]
-    return any(b in u for b in bad)
-
+        "cdn.suspilne",
+        "userpic",
+        "emoji",
+        "/img/emoji",
+        "profile_pic",
+        "telesco.pe/file/userpic",
+    )
+    return any(x in u for x in bad)
 
 def prepare_image_with_watermark(image_url: str):
     print(f"WM: start {str(image_url)[:100]}")
