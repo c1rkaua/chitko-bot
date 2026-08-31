@@ -1219,77 +1219,69 @@ async def scheduled_news():
     NEWS_LOCK["on"] = True
     try:
         raw = get_top_news_for_brief(12)
-        seen = list(LAST_PUB_TITLES)
-        hits = []
-        for n in raw:
-            if not is_hit_story(n):
-                continue
-            fp = news_fingerprint(n)
-            if any(is_same_story(fp, old) for old in seen):
-                continue
-            hits.append(n)
-        if hits:
-            news_list = hits[:1]
-            print(f"HIT queue {len(news_list)}")
-        else:
-            news_list = pick_cycle_news(raw)
-            news_list = cluster_unique(news_list)
-            print(f"HIT empty fallback {len(news_list)}")
         now = time.time()
         sent = 0
 
-        for news in news_list:
-            score = float(news.get("final_score") or 0)
-            hit = is_hit_story(news)
-            if score < 60 and not hit:
-                continue
-            fp = news_fingerprint(news)
-            if any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
-                print(f"DEDUP mem: {fp[:80]}")
-                continue
+        async def publish_one(items, tag):
+            nonlocal sent
+            for news in items:
+                if sent >= 1:
+                    return
+                score = float(news.get("final_score") or 0)
+                hit = is_hit_story(news)
+                if score < 60 and not hit:
+                    continue
+                fp = news_fingerprint(news)
+                if any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
+                    print(f"DEDUP mem: {fp[:80]}")
+                    continue
+                prepared = prepare_chitko_news(news)
+                if not prepared:
+                    continue
+                news = prepared
+                fp2 = news_fingerprint(news)
+                if any(is_same_story(fp2, old) for old in LAST_PUB_TITLES):
+                    print(f"DEDUP after rewrite: {fp2[:80]}")
+                    continue
+                formatted = format_news_post(news)
+                if not formatted or "⚡️" not in formatted:
+                    continue
+                breaking = is_breaking(news) or hit
+                if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
+                    continue
+                await send_news_to_channel(news, formatted)
+                LAST_AUTO_NEWS["at"] = now
+                save_last_auto(now)
+                LAST_PUB_TITLES.append(fp2)
+                if len(LAST_PUB_TITLES) > 80:
+                    del LAST_PUB_TITLES[:-80]
+                published_ids.add(news["event_id"])
+                save_published_ids(published_ids)
+                recent = load_recent_titles()
+                recent.append(fp2)
+                save_recent_titles(recent)
+                sent += 1
+                print(f"{tag} sent")
+                return
 
-            prepared = prepare_chitko_news(news)
-            if not prepared:
-                continue
-            news = prepared
-            fp2 = news_fingerprint(news)
-            if any(is_same_story(fp2, old) for old in LAST_PUB_TITLES):
-                print(f"DEDUP after rewrite: {fp2[:80]}")
-                continue
+        hits = [n for n in raw if is_hit_story(n)]
+        print(f"HIT queue {len(hits)}")
+        await publish_one(hits[:3], "HIT")
 
-            formatted = format_news_post(news)
-            if not formatted or "⚡️" not in formatted:
-                continue
-
-            breaking = is_breaking(news) or hit
-            if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
-                continue
-            if sent >= 1:
-                break
-
-            await send_news_to_channel(news, formatted)
-            LAST_AUTO_NEWS["at"] = now
-            save_last_auto(now)
-            LAST_PUB_TITLES.append(fp2)
-            if len(LAST_PUB_TITLES) > 80:
-                del LAST_PUB_TITLES[:-80]
-            published_ids.add(news["event_id"])
-            save_published_ids(published_ids)
-            recent = load_recent_titles()
-            recent.append(fp2)
-            save_recent_titles(recent)
-            sent += 1
-            break
+        if sent == 0:
+            mix = cluster_unique(pick_cycle_news(raw))
+            print(f"HIT empty fallback {len(mix)}")
+            await publish_one(mix, "MIX")
 
         try:
             await bot.send_message(
                 ADMIN_GROUP_ID,
-                f"Цикл новин.\nКандидати: {len(news_list)}\nАвто: {sent}",
+                f"Цикл новин.\nАвто: {sent}",
             )
         except Exception:
             pass
     finally:
-        NEWS_LOCK["on"] = False
+        NEWS_LOCK["on"] = False   
 
 async def main():
     print("Я заработал")
