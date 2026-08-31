@@ -233,16 +233,15 @@ HIT_PLACE = (
     "київ", "киев", "троєщин", "деснян", "погреб", "бровар",
     "бориспіл", "оболон", "печерськ", "позняк", "дарниц",
     "одес", "харков", "дніпр", "львів", "запоріж", "миколаїв",
-    "україн",
 )
 HIT_EVENT = (
     "склад", "пожеж", "пожар", "горить", "загорян",
-    "приліт", "влучан", "уламк", "вибух",
+    "приліт", "влучан", "уламк",
 )
 HIT_BIZ = (
     "азс", "заправк", "банк", "відділен", "банкомат",
     "тц ", "трц", "торговельн", "супермаркет", "гіпермаркет",
-    "аптек", "пошт", "логіст",
+    "аптек", "пошт", "логіст", "термінал",
     "атб", "сільпо", "фора", "varus", "novus", "metro",
     "auchan", "розетка", "rozetka", "comfy", "фокстрот",
     "алло", "епіцентр", "леруа", "окко", "wog", "socar",
@@ -258,9 +257,7 @@ def is_hit_story(news: dict) -> bool:
     ]).lower()
     if not any(x in t for x in HIT_EVENT):
         return False
-    if any(x in t for x in HIT_BIZ) or any(x in t for x in HIT_PLACE):
-        return True
-    return False
+    return any(x in t for x in HIT_BIZ) or any(x in t for x in HIT_PLACE)
 
 def extract_tg_media(chunk: str) -> dict:
     import re

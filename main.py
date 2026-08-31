@@ -1251,10 +1251,6 @@ def cluster_unique(items: list) -> list:
         fp = news_fingerprint(n)
         if len(fp) < 12:
             continue
-        if is_hit_story(n):
-            out.append(n)
-            seen.append(fp)
-            continue
         if any(is_same_story(fp, old) for old in seen):
             print(f"CLUSTER skip: {fp[:80]}")
             continue
@@ -1281,7 +1277,7 @@ async def scheduled_news():
         raw = get_top_news_for_brief(12)
         hits = [n for n in raw if is_hit_story(n)]
         if hits:
-            news_list = hits[:2]
+            news_list = cluster_unique(hits)[:1]
             print(f"HIT queue {len(news_list)}")
         else:
             news_list = pick_cycle_news(raw)
@@ -1295,7 +1291,7 @@ async def scheduled_news():
             if score < 60 and not hit:
                 continue
             fp = news_fingerprint(news)
-            if (not hit) and any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
+            if any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
                 print(f"DEDUP mem: {fp[:80]}")
                 continue
 
@@ -1304,7 +1300,7 @@ async def scheduled_news():
                 continue
             news = prepared
             fp2 = news_fingerprint(news)
-            if (not hit) and any(is_same_story(fp2, old) for old in LAST_PUB_TITLES):
+            if any(is_same_story(fp2, old) for old in LAST_PUB_TITLES):
                 print(f"DEDUP after rewrite: {fp2[:80]}")
                 continue
 
@@ -1315,8 +1311,7 @@ async def scheduled_news():
             breaking = is_breaking(news) or hit
             if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
                 continue
-            if sent >= 1 and not hit:
-                print("DEDUP cap one per cycle")
+            if sent >= 1:
                 break
 
             await send_news_to_channel(news, formatted)
@@ -1331,8 +1326,7 @@ async def scheduled_news():
             recent.append(fp2)
             save_recent_titles(recent)
             sent += 1
-            if not hit:
-                break
+            break
 
         try:
             await bot.send_message(
