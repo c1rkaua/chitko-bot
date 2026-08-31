@@ -1360,9 +1360,7 @@ async def main():
         scheduled_evening_digest,
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
     )
-    scheduler.add_job(scheduled_air, "interval", seconds=30)
-    scheduler.add_job(scheduled_threats, "interval", seconds=60)
-
+    
     scheduler.start()
     print("Планувальник запущено")
     await dp.start_polling(bot)
