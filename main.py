@@ -1209,8 +1209,11 @@ NEWS_LOCK = {"on": False}
 async def scheduled_news():
     import time
     from news_engine import (
-        is_breaking, is_same_story, prepare_chitko_news,
-        news_fingerprint, is_hit_story,
+        is_breaking,
+        is_same_story,
+        prepare_chitko_news,
+        news_fingerprint,
+        is_hit_story,
     )
 
     if NEWS_LOCK.get("on"):
@@ -1266,23 +1269,14 @@ async def scheduled_news():
 
         hits = [n for n in raw if is_hit_story(n)]
         print(f"HIT queue {len(hits)}")
-        await publish_one(hits[:3], "HIT")
-
+        await publish_one(hits, "HIT")
         if sent == 0:
             mix = cluster_unique(pick_cycle_news(raw))
             print(f"HIT empty fallback {len(mix)}")
             await publish_one(mix, "MIX")
-
-        try:
-            await bot.send_message(
-                ADMIN_GROUP_ID,
-                f"Цикл новин.\nАвто: {sent}",
-            )
-        except Exception:
-            pass
     finally:
-        NEWS_LOCK["on"] = False   
-
+        NEWS_LOCK["on"] = False
+        
 async def main():
     print("Я заработал")
     try:
