@@ -1112,55 +1112,17 @@ def save_last_auto(ts: float) -> None:
         print(f"SAVE last_auto {e}")
 
 def format_threat_now(result: dict) -> str:
-    from air_attack import TYPE_UA, TYPE_UA_ONE, EMOJI
-
-    totals = result.get("totals_now") or result.get("totals") or {}
     hints = result.get("hints") or []
-    hints_blob = " ".join(str(h) for h in hints).lower()
-    allow_missile = any(
-        w in hints_blob for w in ("ракет", "баліст", "кінжал", "іскандер", "циркон")
-    )
-    lines = []
-    for t in (
-        "UAV", "ISKANDER", "KINZHAL", "ZIRCON",
-        "X101", "X22", "ORESHNIK", "HYPER", "AERO",
-        "BALLISTIC", "CRUISE", "UNKNOWN",
-    ):
-        if t in (
-            "CRUISE", "BALLISTIC", "ISKANDER", "KINZHAL",
-            "X101", "X22", "ZIRCON", "ORESHNIK", "HYPER",
-        ) and not allow_missile:
-            continue
-        n = int(totals.get(t) or 0)
-        if n <= 0:
-            continue
-        emoji = EMOJI.get(t, "⚠️")
-        name = TYPE_UA_ONE.get(t) if n == 1 else TYPE_UA.get(t)
-        lines.append(f"{emoji} {n} {name}")
-
-    total_n = 0
-    for v in totals.values():
-        try:
-            total_n += int(v or 0)
-        except Exception:
-            pass
-    if total_n >= 12 or (total_n >= 8 and not hints):
-        lines = []
-
-    if not lines and not hints:
-        return ""
     if result.get("action") == "PUBLISH":
         head = "🚨 <b>Повітряна загроза</b> 🚨"
     else:
         head = "⚠️ <b>Оновлення щодо загрози</b> ⚠️"
-
     extra = ""
     if hints:
         extra = f"Зараз курс: {hints[0]}.\n"
         for h in hints[1:]:
             extra += f"{h}.\n"
-
-    body = "\n".join(lines) if lines else "Загроза над містом, уточнюємо курс."
+    body = "Загроза над містом, уточнюємо курс."
     return (
         f"{head}\n\n"
         f"Київ. Станом на зараз:\n"
@@ -1170,9 +1132,18 @@ def format_threat_now(result: dict) -> str:
         f"<b>ЧІТКО</b>"
     )
 
+async def unpin_threat():
+    try:
+        await bot.unpin_all_chat_messages(chat_id=CHANNEL_ID)
+        print("THREAT unpinned")
+    except Exception as e:
+        print(f"THREAT unpin fail {e}")
+
+
 async def pin_threat(msg_id):
     if not msg_id:
         return
+    await unpin_threat()
     try:
         await bot.pin_chat_message(
             chat_id=CHANNEL_ID,
@@ -1182,14 +1153,6 @@ async def pin_threat(msg_id):
         print(f"THREAT pinned {msg_id}")
     except Exception as e:
         print(f"THREAT pin fail {e}")
-
-
-async def unpin_threat():
-    try:
-        await bot.unpin_all_chat_messages(chat_id=CHANNEL_ID)
-        print("THREAT unpinned")
-    except Exception as e:
-        print(f"THREAT unpin fail {e}")
 
 async def scheduled_threats():
     import time
@@ -1329,7 +1292,12 @@ async def scheduled_air():
     scheduled_air._last = {"sig": sig, "at": now}
 
     try:
-        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        sent = await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        ev = data.get("event_type") or ""
+        if ev.startswith("ALERT_END"):
+            await unpin_threat()
+        elif ev.startswith("ALERT_START") or ev.startswith("ALERT_REPEAT"):
+            await pin_threat(sent.message_id)
     except Exception as e:
         print(f"AIR send {e}")
 

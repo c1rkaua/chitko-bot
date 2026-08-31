@@ -1261,9 +1261,9 @@ def apply_editorial_caps(news: dict) -> dict:
     filler_geo = any(x in t for x in [
         "санду", "кишинів", "молдов", "захаров", "вірмен", "patriot",
         "брянськ", "брянск", "ленінград", "ленинград", "кіриш", "кириш",
-        "ростов", "бєлгород", "белгород","oryol", "rostov", "yeisk", "leningrad",
-        "орел", "єйськ", "ейськ", "башкортостан", "архангельськ",
-        "bashkort", "arkhangelsk", "zelenskyy",
+        "ростов", "бєлгород", "белгород", "oryol", "rostov", "yeisk",
+        "leningrad", "орел", "єйськ", "ейськ", "башкортостан",
+        "архангельськ", "bashkort", "arkhangelsk",
     ])
 
     if civilian:
@@ -1296,6 +1296,32 @@ def apply_editorial_caps(news: dict) -> dict:
     if filler_geo and news.get("bucket") != "civilian":
         score = min(score, 40)
         news["bucket"] = "war_filler"
+
+    hook = any(x in t for x in (
+        "україн", "київ", "києв", "зсу", "ппо", "санкці",
+        "зерн", "мобіліз", "збро", "нато",
+    ))
+    think = any(x in t for x in (
+        "експерти вважають", "психологічн", "наратив",
+    ))
+    worldish = any(x in t for x in (
+        "іран", "йордан", "ларак", "ормуз", "канада",
+        "тариф", "трамп",
+    ))
+    hour = 12
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        hour = datetime.now(ZoneInfo("Europe/Kyiv")).hour
+    except Exception:
+        pass
+    if think:
+        score = min(score, 47)
+        news["bucket"] = "war_filler"
+    if worldish and not hook and news.get("bucket") != "civilian":
+        if hour < 6 or hour >= 23:
+            score = min(score, 46)
+            news["bucket"] = "other"
 
     news["final_score"] = score
     return news

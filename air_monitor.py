@@ -270,6 +270,13 @@ KYIV_DISTRICTS = [
     ("олимпийск", "Олімпійська"),
     ("палац спорт", "Палац спорту"),
     ("львівськ площ", "Львівська площа"),
+    ("бровар", "Бровари"),
+    ("бориспіл", "Бориспіль"),
+    ("бориспол", "Бориспіль"),
+    ("погреб", "Погреби"),
+    ("вишгород", "Вишгород"),
+    ("видубич", "Видубичі"),
+    ("олімпійськ", "Олімпійська"),
 ]
 
 KYIV_MONITOR = [
@@ -359,10 +366,8 @@ def fetch_latest_course() -> list:
         "підписатися", "присылайте", "реклам", "купим",
         "повітряна тривога", "відбій", "отбой",
     )
-    hit_keys = ("вибух", "взрыв", "приліт", "прилет", "гучно на", "влучан", "гучно")
-    course = []
-    hit = []
-    for chunk in chunks[1:8]:
+    hit_keys = ("вибух", "взрыв", "приліт", "прилет", "влучан")
+    for chunk in chunks[1:6]:
         raw = re.sub(r"<[^>]+>", " ", chunk)
         raw = re.sub(r"\s+", " ", raw).strip()
         low = raw.lower()
@@ -372,31 +377,14 @@ def fetch_latest_course() -> list:
         if not found:
             continue
         if any(k in low for k in hit_keys):
-            if not hit:
-                hit = [f"Вибух: {found[0]}"]
-        elif not course:
-            course = [found[0]]
-        if course and hit:
-            break
-    out = course + hit
-    if out:
-        print(f"COURSE now {out}")
-    return out
+            print(f"COURSE hit {found[0]}")
+            return [found[0], f"Вибух: {found[0]}"]
+        print(f"COURSE now {found[0]} raw={raw[:70]}")
+        return [found[0]]
+    return []
+
 
 def fetch_district_hints() -> list:
     latest = fetch_latest_course()
-    if latest:
-        return latest
-    merged = []
-    for url in (
-        "https://t.me/s/obolon_info",
-        "https://t.me/s/kyivoperat",
-        "https://t.me/s/eradarrua",
-        "https://t.me/s/kievreal1",
-    ):
-        for name in fetch_tg_districts(url):
-            if name not in merged:
-                merged.append(name)
-        if merged:
-            return merged[:1]
-    return []
+    return latest or []
+   
