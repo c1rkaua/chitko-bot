@@ -1206,7 +1206,6 @@ def cluster_unique(items: list) -> list:
 
 NEWS_LOCK = {"on": False}
 
-
 async def scheduled_news():
     import time
     from news_engine import (
@@ -1220,13 +1219,22 @@ async def scheduled_news():
     NEWS_LOCK["on"] = True
     try:
         raw = get_top_news_for_brief(12)
-        hits = [n for n in raw if is_hit_story(n)]
+        seen = list(LAST_PUB_TITLES)
+        hits = []
+        for n in raw:
+            if not is_hit_story(n):
+                continue
+            fp = news_fingerprint(n)
+            if any(is_same_story(fp, old) for old in seen):
+                continue
+            hits.append(n)
         if hits:
-            news_list = cluster_unique(hits)[:1]
+            news_list = hits[:1]
             print(f"HIT queue {len(news_list)}")
         else:
             news_list = pick_cycle_news(raw)
             news_list = cluster_unique(news_list)
+            print(f"HIT empty fallback {len(news_list)}")
         now = time.time()
         sent = 0
 
