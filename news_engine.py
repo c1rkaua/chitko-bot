@@ -229,6 +229,39 @@ def is_breaking(news: dict) -> bool:
     ]
     return score >= 88 and any(k in blob for k in keys)
 
+HIT_PLACE = (
+    "київ", "киев", "троєщин", "деснян", "погреб", "бровар",
+    "бориспіл", "оболон", "печерськ", "позняк", "дарниц",
+    "одес", "харков", "дніпр", "львів", "запоріж", "миколаїв",
+    "україн",
+)
+HIT_EVENT = (
+    "склад", "пожеж", "пожар", "горить", "загорян",
+    "приліт", "влучан", "уламк", "вибух",
+)
+HIT_BIZ = (
+    "азс", "заправк", "банк", "відділен", "банкомат",
+    "тц ", "трц", "торговельн", "супермаркет", "гіпермаркет",
+    "аптек", "пошт", "логіст",
+    "атб", "сільпо", "фора", "varus", "novus", "metro",
+    "auchan", "розетка", "rozetka", "comfy", "фокстрот",
+    "алло", "епіцентр", "леруа", "окко", "wog", "socar",
+    "приват", "ощад", "монобанк", "нова пошт", "нової пошт",
+)
+
+def is_hit_story(news: dict) -> bool:
+    t = " ".join([
+        news.get("title_chitko") or "",
+        news.get("title") or "",
+        news.get("text") or "",
+        news.get("body") or "",
+    ]).lower()
+    if not any(x in t for x in HIT_EVENT):
+        return False
+    if any(x in t for x in HIT_BIZ) or any(x in t for x in HIT_PLACE):
+        return True
+    return False
+
 def extract_tg_media(chunk: str) -> dict:
     import re
 

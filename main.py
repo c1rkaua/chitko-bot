@@ -995,98 +995,8 @@ def pick_cycle_news(items: list) -> list:
     )
     return out[:3]
 
-def cluster_unique(items: list) -> list:
-    from news_engine import is_same_story, load_recent_titles, news_fingerprint
-
-    seen = list(LAST_PUB_TITLES)
-    try:
-        seen.extend(load_recent_titles() or [])
-    except Exception:
-        pass
-    out = []
-    for n in items:
-        fp = news_fingerprint(n)
-        if len(fp) < 12:
-            continue
-        if any(is_same_story(fp, old) for old in seen):
-            print(f"CLUSTER skip: {fp[:80]}")
-            continue
-        seen.append(fp)
-        out.append(n)
-    return out
-
 
 NEWS_LOCK = {"on": False}
-
-
-async def scheduled_news():
-    import time
-    from news_engine import is_breaking, is_same_story, prepare_chitko_news, news_fingerprint
-
-    if NEWS_LOCK.get("on"):
-        print("NEWS lock skip")
-        return
-    NEWS_LOCK["on"] = True
-    try:
-        news_list = get_top_news_for_brief(12)
-        news_list = pick_cycle_news(news_list)
-        news_list = cluster_unique(news_list)
-        now = time.time()
-        sent = 0
-
-        for news in news_list:
-            score = float(news.get("final_score") or 0)
-            if score < 60:
-                continue
-            fp = news_fingerprint(news)
-            if any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
-                print(f"DEDUP mem: {fp[:80]}")
-                continue
-
-            prepared = prepare_chitko_news(news)
-            if not prepared:
-                continue
-            news = prepared
-            fp2 = news_fingerprint(news)
-            if any(is_same_story(fp2, old) for old in LAST_PUB_TITLES):
-                print(f"DEDUP after rewrite: {fp2[:80]}")
-                continue
-
-            formatted = format_news_post(news)
-            if not formatted or "⚡️" not in formatted:
-                continue
-
-            breaking = is_breaking(news)
-            if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
-                continue
-            if sent >= 1:
-                print("DEDUP cap one per cycle")
-                break
-
-            await send_news_to_channel(news, formatted)
-            LAST_AUTO_NEWS["at"] = now
-            save_last_auto(now)
-            LAST_PUB_TITLES.append(fp2)
-            if len(LAST_PUB_TITLES) > 80:
-                del LAST_PUB_TITLES[:-80]
-            published_ids.add(news["event_id"])
-            save_published_ids(published_ids)
-            recent = load_recent_titles()
-            recent.append(fp2)
-            save_recent_titles(recent)
-            sent += 1
-            break
-
-        try:
-            await bot.send_message(
-                ADMIN_GROUP_ID,
-                f"Цикл новин.\nКандидати: {len(news_list)}\nАвто: {sent}",
-            )
-        except Exception:
-            pass
-    finally:
-        NEWS_LOCK["on"] = False
-
 LAST_THREAT = {}
 LAST_AUTO_NEWS = {"at": 0.0}
 LAST_PUB_TITLES = []
@@ -1342,14 +1252,8 @@ async def main():
     except Exception as e:
         print(f"SEED titles fail {e}")
 
-    LAST_AUTO_NEWS["at"] = load_last_auto()
-    if not LAST_AUTO_NEWS["at"]:
-        import time
-        LAST_AUTO_NEWS["at"] = time.time()
-        save_last_auto(LAST_AUTO_NEWS["at"])
-        print("SEED last_auto hold 30min after boot")
-    else:
-        print(f"SEED last_auto {int(LAST_AUTO_NEWS['at'])}")
+    LAST_AUTO_NEWS["at"] = load_last_auto() or 0.0
+    print(f"SEED last_auto {int(LAST_AUTO_NEWS['at'])}")
 
     scheduler.add_job(
         scheduled_brief,
@@ -1360,10 +1264,11 @@ async def main():
         scheduled_evening_digest,
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
     )
-    
+
     scheduler.start()
     print("Планувальник запущено")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
