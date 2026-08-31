@@ -277,6 +277,11 @@ KYIV_DISTRICTS = [
     ("вишгород", "Вишгород"),
     ("видубич", "Видубичі"),
     ("олімпійськ", "Олімпійська"),
+    ("дврз", "ДВРЗ"),
+    ("димерк", "Велика Димерка"),
+    ("бориспіл", "Бориспіль"),
+    ("бориспол", "Бориспіль"),
+    ("погреб", "Погреби"),
 ]
 
 KYIV_MONITOR = [
@@ -351,40 +356,38 @@ def fetch_latest_course() -> list:
     import re
     import requests
 
-    try:
-        html = requests.get(
-            "https://t.me/s/k_dvizh",
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0"},
-        ).text
-    except Exception as e:
-        print(f"COURSE dvizh {e}")
-        return []
-
-    chunks = re.split(r'class="tgme_widget_message_text', html)
+    urls = (
+        "https://t.me/s/k_dvizh",
+        "https://t.me/s/kievreal1",
+        "https://t.me/s/eradarrua",
+    )
     skip = (
         "підписатися", "присылайте", "реклам", "купим",
-        "повітряна тривога", "відбій", "отбой",
+        "надіслати новину", "повітряна тривога", "оголошена",
+        "відбій", "отбой", "air siren", "підтримай",
     )
-    hit_keys = ("вибух", "взрыв", "приліт", "прилет", "влучан")
-    for chunk in chunks[1:6]:
-        raw = re.sub(r"<[^>]+>", " ", chunk)
-        raw = re.sub(r"\s+", " ", raw).strip()
-        low = raw.lower()
-        if any(s in low for s in skip):
+    headers = {"User-Agent": "Mozilla/5.0"}
+    for url in urls:
+        try:
+            html = requests.get(url, timeout=10, headers=headers).text
+        except Exception as e:
+            print(f"COURSE {url} {e}")
             continue
-        found = detect_districts(raw)
-        if not found:
-            continue
-        if any(k in low for k in hit_keys):
-            print(f"COURSE hit {found[0]}")
-            return [found[0], f"Вибух: {found[0]}"]
-        print(f"COURSE now {found[0]} raw={raw[:70]}")
-        return [found[0]]
+        chunks = re.split(r'class="tgme_widget_message_text', html)
+        for chunk in chunks[1:8]:
+            raw = re.sub(r"<[^>]+>", " ", chunk)
+            raw = re.sub(r"\s+", " ", raw).strip()
+            low = raw.lower()
+            if any(s in low for s in skip):
+                continue
+            found = detect_districts(raw)
+            if not found:
+                continue
+            print(f"COURSE now {found[0]} via {url}")
+            return [found[0]]
     return []
 
 
 def fetch_district_hints() -> list:
-    latest = fetch_latest_course()
-    return latest or []
+    return fetch_latest_course() or []
    

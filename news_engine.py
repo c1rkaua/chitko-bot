@@ -9,16 +9,21 @@ import os
 PUBLISHED_FILE = "published_ids.json"
 
 TG_SOURCES = {
-    "kyivoperat": {"name": "Київ Оперативний", "trust": 9.0, "bias": "civilian"},
-    "NovynaUKR": {"name": "НОВИНА", "trust": 8.9, "bias": "civilian"},
-    "uniannet": {"name": "УНІАН", "trust": 8.8, "bias": "civilian"},
-    "obolon_info": {"name": "Оболонь INFO", "trust": 8.7, "bias": "civilian"},
-    "k_dvizh": {"name": "Киевский Движ", "trust": 8.6, "bias": "civilian"},
-    "truexanewsua": {"name": "Труха Україна", "trust": 8.6, "bias": "civilian"},
-    "lachentyt": {"name": "Лачен пише", "trust": 8.4, "bias": "civilian"},
-    "times_ukraina": {"name": "Times of Ukraine", "trust": 8.4, "bias": "civilian"},
-    "insiderUKR": {"name": "Інсайдер UA", "trust": 8.4, "bias": "civilian"},
-    "vanek_nikolaev": {"name": "Миколаївський Ванек", "trust": 8.2, "bias": "civilian"},
+    "kyivoperat": {"name": "Київ Оперативний", "trust": 9.4, "allow_national": False},
+    "NovynaUKR": {"name": "НОВИНА", "trust": 9.3, "allow_national": True},
+    "uniannet": {"name": "УНІАН", "trust": 9.2, "allow_national": True},
+    "tsnua": {"name": "ТСН", "trust": 9.1, "allow_national": True},
+    "nvua": {"name": "NV", "trust": 9.0, "allow_national": True},
+    "babel": {"name": "Бабель", "trust": 9.0, "allow_national": True},
+    "hromadske": {"name": "hromadske", "trust": 8.9, "allow_national": True},
+    "dsns_telegram": {"name": "ДСНС", "trust": 9.3, "allow_national": True},
+    "obolon_info": {"name": "Оболонь INFO", "trust": 8.8, "allow_national": False},
+    "k_dvizh": {"name": "Киевский Движ", "trust": 8.7, "allow_national": False},
+    "truexanewsua": {"name": "Труха Україна", "trust": 8.6, "allow_national": True},
+    "lachentyt": {"name": "Лачен пише", "trust": 8.8, "allow_national": True},
+    "times_ukraina": {"name": "Times of Ukraine", "trust": 8.7, "allow_national": True},
+    "insiderUKR": {"name": "Інсайдер UA", "trust": 8.6, "allow_national": True},
+    "vanek_nikolaev": {"name": "Миколаївський Ванек", "trust": 8.5, "allow_national": True},
 }
 
 CIVILIAN_KEYS = [
@@ -331,7 +336,11 @@ def fetch_tg_channel_posts() -> list:
             if any(k in low for k in WAR_FILLER_KEYS):
                 LAST_TG_STATS["skipped"] += 1
                 continue
-            if not any(k in low for k in CIVILIAN_KEYS):
+            local = any(k in low for k in CIVILIAN_KEYS)
+            if not local and not meta.get("allow_national"):
+                LAST_TG_STATS["skipped"] += 1
+                continue
+            if not local and len(text) < 90:
                 LAST_TG_STATS["skipped"] += 1
                 continue
             if len(text) < 80 and any(k in low for k in ("вибух", "гучно", "на центр")):
@@ -1283,15 +1292,16 @@ def apply_editorial_caps(news: dict) -> dict:
         "труха", "лачен", "times", "інсайдер", "ванек",
         "kyivoperat", "novynaukr", "uniannet", "obolon",
         "k_dvizh", "truexa", "lachen", "insider", "vanek",
+        "тсн", "tsn", "nv", "бабель", "babel", "hromadske", "дснс", "dsns",
     )
     if any(x in source for x in tg_names):
-        score = min(100, score + 8)
+        score = min(100, score + 12)
         news["from_tg"] = True
 
     if "suspilne" in source or "суспільне" in source:
-        score = min(score, 58)
+        score = min(score, 49)
         if news.get("bucket") in ("war_filler", "other"):
-            score = min(score, 48)
+            score = min(score, 42)
 
     if filler_geo and news.get("bucket") != "civilian":
         score = min(score, 40)
