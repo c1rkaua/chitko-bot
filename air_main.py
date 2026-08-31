@@ -12,8 +12,17 @@ from air_engine import process_air_cycle, format_air_post, fetch_official_alerts
 from air_monitor import detect_districts
 
 AIR_BOT_TOKEN = os.getenv("AIR_BOT_TOKEN") or os.getenv("BOT_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID"))
+
+def _chat(val):
+    val = (val or "").strip()
+    if not val:
+        raise RuntimeError("missing chat id")
+    if val.startswith("@"):
+        return val
+    return int(val)
+
+CHANNEL_ID = _chat(os.getenv("CHANNEL_ID"))
+ADMIN_GROUP_ID = _chat(os.getenv("ADMIN_GROUP_ID"))
 
 bot = Bot(
     token=AIR_BOT_TOKEN,
