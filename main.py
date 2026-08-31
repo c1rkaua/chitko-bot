@@ -523,61 +523,15 @@ async def cmd_brief(message: Message):
 
 @dp.message(Command("news"))
 async def cmd_news(message: Message):
-    if message.chat.id != ADMIN_GROUP_ID:
-        return
-
-    await message.answer("Збираю новини...")
-
-    news_list = get_top_news_for_brief(12)
-    news_list = pick_cycle_news(news_list)
-    to_auto = [n for n in news_list if float(n.get("final_score") or 0) >= 60]
-    auto_published = 0
-
-    for news in to_auto:
-        if not (news.get("title_chitko") or news.get("title") or "").strip():
-            continue
-        if news.get("final_score", 0) >= 90 and news.get("source_url"):
-            try:
-                full_text = fetch_article_text_sync(news["source_url"])
-                if full_text and len(full_text) > 120:
-                    news["text_chitko"] = full_text
-            except Exception:
-                pass
-
-        formatted = format_news_post(news)
-        await send_news_to_channel(news, formatted)
-
-        published_ids.add(news["event_id"])
-        save_published_ids(published_ids)
-
-        recent = load_recent_titles()
-        recent.append(news.get("title_chitko") or news.get("title_original") or news.get("title") or "")
-        save_recent_titles(recent)
-
-        auto_published += 1
-
-    auto_ids = {n["event_id"] for n in to_auto}
-    for_approval = [
-        n for n in news_list
-        if n["event_id"] not in auto_ids and float(n.get("final_score") or 0) >= 45
-    ][:6]
-
-    for news in for_approval:
-        pending_news[news["event_id"]] = news
-        formatted = format_news_post(news)
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Апрув", callback_data=f"approve_one_{news['event_id']}"),
-            InlineKeyboardButton(text="❌ Скіп", callback_data=f"skip_one_{news['event_id']}"),
-        ]])
+    print(f"CMD news chat={message.chat.id} admin={ADMIN_GROUP_ID}")
+    if str(message.chat.id) != str(ADMIN_GROUP_ID):
         await message.answer(
-            f"<b>Score: {news.get('final_score')}</b>\n\n{formatted}",
-            reply_markup=keyboard,
-            parse_mode="HTML",
+            f"Не той чат.\nЦей id: {message.chat.id}\nУ бота: {ADMIN_GROUP_ID}"
         )
-
-    await message.answer(
-        f"Кандидати: {len(news_list)}\nАвто: {auto_published}\nАпрув: {len(for_approval)}"
-    )
+        return
+    await message.answer("Збираю новини...")
+    await scheduled_news()
+    await message.answer("Цикл /news завершено.")
 
 @dp.message(Command("digest"))
 async def cmd_digest(message: Message):
