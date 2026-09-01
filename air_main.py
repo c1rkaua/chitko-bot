@@ -1,7 +1,6 @@
 import asyncio
 import os
 import re
-import time
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -13,6 +12,7 @@ from air_monitor import detect_districts
 
 AIR_BOT_TOKEN = os.getenv("AIR_BOT_TOKEN") or os.getenv("BOT_TOKEN")
 
+
 def _chat(val):
     val = (val or "").strip()
     if not val:
@@ -20,6 +20,7 @@ def _chat(val):
     if val.startswith("@"):
         return val
     return int(val)
+
 
 CHANNEL_ID = _chat(os.getenv("CHANNEL_ID"))
 ADMIN_GROUP_ID = _chat(os.getenv("ADMIN_GROUP_ID"))
@@ -47,6 +48,7 @@ SKIP_LINE = (
     "підписатися", "присылайте", "реклам", "купим",
     "надіслати новину", "онлайн-карта", "повітряна тривога",
     "оголошена", "відбій", "отбой", "підтримай",
+    "касетн", "карта ціл", "котики",
 )
 
 
@@ -58,30 +60,94 @@ def parse_course_line(raw: str) -> dict | None:
         return None
     if any(s in low for s in SKIP_LINE):
         return None
+
+    if "гучно" in low:
+        place = (detect_districts(text) or ["Київ"])[0]
+        return {
+            "fp": f"loud|{place.lower()}",
+            "place": place,
+            "kind": "LOUD",
+            "n": 1,
+            "src": "",
+        }
+    if "поки чисто" in low or "над києвом чисто" in low or "чисто по швидкіс" in low:
+        return {
+            "fp": "clear|kyiv",
+            "place": "Київ",
+            "kind": "CLEAR",
+            "n": 1,
+            "src": "",
+        }
+    if "ще пуски" in low or "ще летить" in low:
+        return {
+            "fp": "launch|kyiv",
+            "place": "Київ",
+            "kind": "LAUNCH",
+            "n": 1,
+            "src": "",
+        }
+
     districts = detect_districts(text)
-    kind = "UAV"
-    if any(x in low for x in ("баліст", "кінжал", "іскандер", "циркон")):
+    kind = None
+    if any(x in low for x in ("циркон", "zircon")):
+        kind = "ZIRCON"
+    elif any(x in low for x in ("калібр", "калибр", "kalibr")):
+        kind = "KALIBR"
+    elif any(x in low for x in ("кінжал", "кинжал", "іскандер", "искандер", "баліст")):
         kind = "BALLISTIC"
-    elif any(x in low for x in ("крилат", "х-101", "x-101", "ракет")):
+    elif any(x in low for x in ("крилат", "х-101", "x-101")):
         kind = "CRUISE"
     elif any(x in low for x in ("бпла", "шахед", "дрон", "безпілот")):
         kind = "UAV"
-    elif not districts:
+    elif "ракет" in low:
+        kind = "CRUISE"
+    elif districts:
+        kind = "UAV"
+    else:
         return None
+
     n = 1
-    m = re.search(r"(\d+)\s*[xх×]?\s*(?:бпла|шахед|дрон|ракет|баліст)?", low)
+    m = re.search(
+        r"(?:ще\s+)?([1-9]|1[0-2])\s*(?:x|х|×)?\s*"
+        r"(?:циркон|калібр|калибр|баліст|ракет|бпла|шахед|дрон|ціл)",
+        low,
+    )
     if m:
-        n = max(1, int(m.group(1)))
+        n = int(m.group(1))
+
     place = districts[0] if districts else "Київ"
     fp = f"{place.lower()}|{kind}|{n}"
-    return {"fp": fp, "place": place, "kind": kind, "n": n, "raw": text[:160]}
+    return {"fp": fp, "place": place, "kind": kind, "n": n, "src": ""}
 
 
 def format_course(item: dict) -> str:
+    if item["kind"] == "LOUD":
+        return (
+            f"⚠️ <b>Гучно</b> ⚠️\n\n"
+            f"{item['place']}.\n"
+            f"Пройдіть в укриття.\n\n"
+            f"<b>ЧІТКО</b>"
+        )
+    if item["kind"] == "CLEAR":
+        return (
+            f"⚠️ <b>Курс</b> ⚠️\n\n"
+            f"Поки чисто над Києвом.\n"
+            f"Загроза ще не знята.\n\n"
+            f"<b>ЧІТКО</b>"
+        )
+    if item["kind"] == "LAUNCH":
+        return (
+            f"⚠️ <b>Курс</b> ⚠️\n\n"
+            f"Ще пуски.\n"
+            f"Пройдіть в укриття.\n\n"
+            f"<b>ЧІТКО</b>"
+        )
     kind_ua = {
         "UAV": "БПЛА",
         "BALLISTIC": "балістика",
         "CRUISE": "крилата ракета",
+        "ZIRCON": "Циркон",
+        "KALIBR": "Калібр",
     }.get(item["kind"], "ціль")
     return (
         f"⚠️ <b>Курс</b> ⚠️\n\n"
@@ -108,7 +174,7 @@ def fetch_course_items() -> list:
             print(f"AIR course {username} {e}")
             continue
         chunks = re.split(r'class="tgme_widget_message_text', html)
-        for chunk in chunks[1:8]:
+        for chunk in chunks[1:10]:
             item = parse_course_line(chunk)
             if not item:
                 continue
@@ -178,18 +244,17 @@ async def scheduled_siren():
 
 async def scheduled_course():
     official = fetch_official_alerts() or {}
-    if not official.get("kyiv"):
+    if not (official.get("kyiv") or WAVE.get("kyiv")):
         return
     items = fetch_course_items()
     for item in items:
         fp = item["fp"]
         if fp in WAVE["seen"]:
-            print(f"AIR skip fp {fp} via {item.get('src')}")
+            print(f"AIR skip fp {fp}")
             continue
         WAVE["seen"].add(fp)
-        text = format_course(item)
         try:
-            sent = await bot.send_message(CHANNEL_ID, text)
+            sent = await bot.send_message(CHANNEL_ID, format_course(item))
             await pin_last(sent.message_id)
             print(f"AIR course {fp} via {item.get('src')}")
         except Exception as e:
@@ -198,8 +263,8 @@ async def scheduled_course():
 
 async def main():
     print("AIR bot up")
-    scheduler.add_job(scheduled_siren, "interval", seconds=15)
-    scheduler.add_job(scheduled_course, "interval", seconds=20)
+    scheduler.add_job(scheduled_siren, "interval", seconds=10)
+    scheduler.add_job(scheduled_course, "interval", seconds=8)
     scheduler.start()
     await dp.start_polling(bot)
 
