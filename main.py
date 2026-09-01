@@ -686,13 +686,12 @@ async def send_news_to_channel(news: dict, formatted: str):
     import os
     import tempfile
     import requests
-    from aiogram.types import FSInputFile, InputMediaPhoto
+    from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
 
     title = (news.get("title_chitko") or news.get("title") or "").strip()
     if len(title) < 8 or not formatted or "⚡️" not in formatted:
         print("SEND skip")
         return
-
     if is_english_post(news, formatted):
         print("SEND skip english")
         return
@@ -723,28 +722,21 @@ async def send_news_to_channel(news: dict, formatted: str):
     photos = [u for u in (news.get("media_urls") or []) if u]
     if not photos and news.get("image_url") and not is_bad_source_image(news.get("image_url")):
         photos = [news["image_url"]]
-    video = news.get("video_url")
+    videos = list(news.get("video_urls") or [])
+    if news.get("video_url") and news["video_url"] not in videos:
+        videos.insert(0, news["video_url"])
     paths = []
 
     try:
-        if video:
-            vpath = download(video, suffix=".mp4")
-            if vpath:
-                paths.append(vpath)
-                try:
-                    await bot.send_video(
-                        CHANNEL_ID,
-                        video=FSInputFile(vpath),
-                        caption=formatted,
-                        parse_mode="HTML",
-                    )
-                    print("SEND video")
-                    return
-                except Exception as e:
-                    print(f"SEND video fail {e}")
+        vfiles = []
+        for url in videos[:4]:
+            p = download(url, suffix=".mp4")
+            if p:
+                paths.append(p)
+                vfiles.append(p)
 
-        files = []
-        for url in photos[:4]:
+        pfiles = []
+        for url in photos[:10]:
             path = download(url)
             if not path:
                 continue
@@ -752,26 +744,66 @@ async def send_news_to_channel(news: dict, formatted: str):
             marked = watermark_file(path)
             if marked != path:
                 paths.append(marked)
-            files.append(marked)
+            pfiles.append(marked)
 
-        if len(files) >= 2:
+        if len(vfiles) == 1 and not pfiles:
+            await bot.send_video(
+                CHANNEL_ID,
+                video=FSInputFile(vfiles[0]),
+                caption=formatted,
+                parse_mode="HTML",
+            )
+            print("SEND video")
+            return
+
+        if len(vfiles) >= 2 and not pfiles:
             media = [
-                InputMediaPhoto(
-                    media=FSInputFile(files[0]),
+                InputMediaVideo(
+                    media=FSInputFile(vfiles[0]),
                     caption=formatted,
                     parse_mode="HTML",
                 )
             ]
-            for p in files[1:]:
+            for p in vfiles[1:]:
+                media.append(InputMediaVideo(media=FSInputFile(p)))
+            await bot.send_media_group(CHANNEL_ID, media=media)
+            print(f"SEND videos {len(media)}")
+            return
+
+        if vfiles and pfiles:
+            await bot.send_video(
+                CHANNEL_ID,
+                video=FSInputFile(vfiles[0]),
+                caption=formatted,
+                parse_mode="HTML",
+            )
+            extra = [
+                InputMediaPhoto(media=FSInputFile(p))
+                for p in pfiles[:9]
+            ]
+            if extra:
+                await bot.send_media_group(CHANNEL_ID, media=extra)
+            print("SEND video+photos")
+            return
+
+        if len(pfiles) >= 2:
+            media = [
+                InputMediaPhoto(
+                    media=FSInputFile(pfiles[0]),
+                    caption=formatted,
+                    parse_mode="HTML",
+                )
+            ]
+            for p in pfiles[1:]:
                 media.append(InputMediaPhoto(media=FSInputFile(p)))
             await bot.send_media_group(CHANNEL_ID, media=media)
             print(f"SEND album {len(media)}")
             return
 
-        if len(files) == 1:
+        if len(pfiles) == 1:
             await bot.send_photo(
                 CHANNEL_ID,
-                photo=FSInputFile(files[0]),
+                photo=FSInputFile(pfiles[0]),
                 caption=formatted,
                 parse_mode="HTML",
             )
