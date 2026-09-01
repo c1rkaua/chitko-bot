@@ -58,13 +58,20 @@ def parse_course_line(raw: str) -> dict | None:
     text = re.sub(r"<[^>]+>", " ", raw or "")
     text = re.sub(r"\s+", " ", text).strip()
     low = text.lower()
-    if len(low) < 4:
+    if len(low) < 3:
         return None
     if any(s in low for s in SKIP_LINE):
         return None
+    if any(s in low for s in (
+        "приймальн", "перше вересня", "підтримай", "підписатися",
+        "присылайте", "реклам",
+    )):
+        return None
+
+    districts = detect_districts(text)
+    place = ", ".join(districts[:4]) if districts else "Київ"
 
     if "гучно" in low:
-        place = (detect_districts(text) or ["Київ"])[0]
         return {
             "fp": f"loud|{place.lower()}",
             "place": place,
@@ -72,7 +79,7 @@ def parse_course_line(raw: str) -> dict | None:
             "n": 1,
             "src": "",
         }
-    if "поки чисто" in low or "над києвом чисто" in low or "чисто по швидкіс" in low:
+    if any(x in low for x in ("поки чисто", "наразі чисто", "поки тиша", "тиша над", "чисто по швидкіс")):
         return {
             "fp": "clear|kyiv",
             "place": "Київ",
@@ -89,20 +96,19 @@ def parse_course_line(raw: str) -> dict | None:
             "src": "",
         }
 
-    districts = detect_districts(text)
     kind = None
     if any(x in low for x in ("циркон", "zircon")):
         kind = "ZIRCON"
     elif any(x in low for x in ("калібр", "калибр", "kalibr")):
         kind = "KALIBR"
-    elif any(x in low for x in ("кінжал", "кинжал", "іскандер", "искандер", "баліст")):
+    elif any(x in low for x in ("кінжал", "кинжал", "іскандер", "искандер")):
+        kind = "BALLISTIC"
+    elif "баліст" in low and "ракетн" not in low[:40]:
         kind = "BALLISTIC"
     elif any(x in low for x in ("крилат", "х-101", "x-101")):
         kind = "CRUISE"
-    elif any(x in low for x in ("бпла", "шахед", "дрон", "безпілот")):
+    elif any(x in low for x in ("бпла", "шахед", "дрон", "безпілот", "намотує", "кола")):
         kind = "UAV"
-    elif "ракет" in low:
-        kind = "CRUISE"
     elif districts:
         kind = "UAV"
     else:
@@ -111,16 +117,14 @@ def parse_course_line(raw: str) -> dict | None:
     n = 1
     m = re.search(
         r"(?:ще\s+)?([1-9]|1[0-2])\s*(?:x|х|×)?\s*"
-        r"(?:циркон|калібр|калибр|баліст|ракет|бпла|шахед|дрон|ціл)",
+        r"(?:циркон|калібр|калибр|баліст|крилат|бпла|шахед|дрон|ціл)",
         low,
     )
     if m:
         n = int(m.group(1))
 
-    place = districts[0] if districts else "Київ"
     fp = f"{place.lower()}|{kind}|{n}"
     return {"fp": fp, "place": place, "kind": kind, "n": n, "src": ""}
-
 
 def format_course(item: dict) -> str:
     if item["kind"] == "LOUD":
