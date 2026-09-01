@@ -36,6 +36,8 @@ COURSE_SOURCES = (
     "k_dvizh",
     "kievreal1",
     "eradarrua",
+    "war_monitor",
+    "povitryanatrivogaaa",
 )
 
 WAVE = {
@@ -241,12 +243,11 @@ async def scheduled_siren():
         except Exception as e:
             print(f"AIR send siren {e}")
 
-
 async def scheduled_course():
-    official = fetch_official_alerts() or {}
-    if not (official.get("kyiv") or WAVE.get("kyiv")):
-        return
     items = fetch_course_items()
+    if not items:
+        print("AIR course empty")
+        return
     for item in items:
         fp = item["fp"]
         if fp in WAVE["seen"]:
@@ -259,7 +260,6 @@ async def scheduled_course():
             print(f"AIR course {fp} via {item.get('src')}")
         except Exception as e:
             print(f"AIR send course {e}")
-
 
 async def main():
     print("AIR bot up")

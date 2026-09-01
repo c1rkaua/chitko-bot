@@ -144,7 +144,7 @@ def fetch_official_alerts() -> dict:
     import time
 
     now = time.time()
-    if now - _ALERT_CACHE["at"] < 15:
+    if now - _ALERT_CACHE["at"] < 8:
         return dict(_ALERT_CACHE["data"])
 
     result = {"kyiv": False, "oblast": False}
@@ -158,23 +158,24 @@ def fetch_official_alerts() -> dict:
         print(f"AIR API error: {e}")
         return dict(_ALERT_CACHE["data"]) if _ALERT_CACHE["at"] else result
 
-    items = (data.get("oblasts") or []) + (data.get("raions") or [])
+    items = (data.get("oblasts") or []) + (data.get("raions") or []) + (data.get("hromadas") or [])
     for item in items:
-        name = (item.get("name") or "").strip().lower()
+        name = (item.get("name") or "").strip().lower().replace("м.", " ").replace("місто", " ")
         oblast = (item.get("oblast") or "").strip().lower()
         key = (item.get("key") or "").strip().lower()
         blob = f"{name} {oblast} {key}"
-        if name in ("київ", "м. київ", "місто київ") or key in ("kyiv", "m.kyiv", "kyiv_city"):
+        clean = " ".join(name.split())
+        if clean in ("київ", "kyiv") or key in ("kyiv", "m.kyiv", "kyiv_city", "ua-30", "31"):
             result["kyiv"] = True
-        elif "київська область" in blob or key.startswith("kyivska"):
-            if name not in ("київ", "м. київ"):
+        elif "київська" in blob or "kyivska" in blob or "киевск" in blob:
+            if clean not in ("київ", "kyiv"):
                 result["oblast"] = True
 
     prev = _ALERT_CACHE["data"]
     if prev.get("kyiv") and not result["kyiv"]:
         _ALERT_CACHE["kyiv_off"] = int(_ALERT_CACHE.get("kyiv_off") or 0) + 1
-        if _ALERT_CACHE["kyiv_off"] < 2:
-            print("AIR hold Kyiv ON (one miss)")
+        if _ALERT_CACHE["kyiv_off"] < 3:
+            print("AIR hold Kyiv ON")
             result["kyiv"] = True
     else:
         _ALERT_CACHE["kyiv_off"] = 0
