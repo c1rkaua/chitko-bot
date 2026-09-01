@@ -219,10 +219,17 @@ def format_morning_brief_text(rates, fuel, headlines: list) -> str:
         "",
         "<b>ГОЛОВНЕ ЗА НІЧ</b>",
     ]
-    for i, h in enumerate(headlines[:3], 1):
+    n = 1
+    for h in headlines:
         title = (h.get("title_chitko") or h.get("title_original") or "").strip().rstrip(".")
-        if title:
-            lines.append(f"{i}. {title}")
+        if not title:
+            continue
+        if is_english_post(h, title):
+            continue
+        lines.append(f"{n}. {title}")
+        n += 1
+        if n > 3:
+            break
 
     lines += ["", "<b>ЧІТКО. Коротко. По суті.</b>"]
     return "\n".join(lines)
@@ -728,6 +735,13 @@ def is_english_post(news: dict, formatted: str) -> bool:
         news.get("title") or "",
         formatted or "",
     ])
+    low = blob.lower()
+    ru = (
+        "баллист", "слышн", "мощн", "взрыв", "по киеву",
+        "монитор", "калибр", "уже 17",
+    )
+    if any(x in low for x in ru):
+        return True
     letters = [c for c in blob if c.isalpha()]
     if len(letters) < 20:
         return False
@@ -1252,7 +1266,7 @@ async def main():
         scheduled_brief,
         CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv"),
     )
-    scheduler.add_job(scheduled_news, "interval", minutes=5)
+    scheduler.add_job(scheduled_news, "interval", minutes=2)
     scheduler.add_job(
         scheduled_evening_digest,
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
