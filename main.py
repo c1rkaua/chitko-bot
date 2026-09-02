@@ -1027,18 +1027,23 @@ def cluster_unique(items: list) -> list:
         pass
     out = []
     for n in items:
+        title = (n.get("title") or n.get("title_chitko") or "").strip()
+        if "pinned a photo" in title.lower() or "єновина" in title.lower():
+            print(f"CLUSTER junk {title[:80]}")
+            continue
         fp = news_fingerprint(n)
         if len(fp) < 12:
             continue
-        if any(is_same_story(fp, old) for old in seen):
+        hit = is_hit_story(n)
+        if (not hit) and any(is_same_story(fp, old) for old in seen):
             print(f"CLUSTER skip: {fp[:80]}")
+            continue
+        if hit and any(is_same_story(fp, old) for old in LAST_PUB_TITLES[-20:]):
+            print(f"CLUSTER hit dup {fp[:80]}")
             continue
         seen.append(fp)
         out.append(n)
     return out
-
-
-NEWS_LOCK = {"on": False}
 
 @dp.message(Command("emoji"))
 async def cmd_emoji(message: Message):
