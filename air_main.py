@@ -184,6 +184,7 @@ def parse_course_line(raw: str) -> dict | None:
     if any(x in low for x in (
         "відбій", "отбой", "видихає", "київ чисто",
         "не фіксується", "відбоїв не буде",
+        "вінниччин", "житомирщин", "чернігівщин",
     )):
         return None
 
@@ -194,6 +195,12 @@ def parse_course_line(raw: str) -> dict | None:
         ("хотив", "Хотів"),
         ("феофан", "Феофанія"),
         ("петрівк", "Петрівка"),
+        ("петрівц", "Петрівці"),
+        ("почайн", "Почайна"),
+        ("воскресен", "Воскресенка"),
+        ("мишолов", "Мишоловка"),
+        ("харківськ", "Харківський масив"),
+        ("відрадн", "Відрадний"),
         ("республік", "ТРЦ Республіка"),
     )
     districts = detect_districts(low) or detect_districts(text)
@@ -217,8 +224,6 @@ def parse_course_line(raw: str) -> dict | None:
         kind = "BALLISTIC"
     elif any(x in low for x in ("крилат", "х-101", "x-101")):
         kind = "CRUISE"
-    elif any(x in low for x in ("реактив",)):
-        kind = "UAV"
 
     n = 1
     m = re.search(
@@ -266,11 +271,11 @@ def fetch_course_items() -> list:
     from datetime import datetime, timezone, timedelta
 
     headers = {"User-Agent": "Mozilla/5.0"}
-    max_age = timedelta(minutes=3)
+    max_age = timedelta(minutes=4)
     now = datetime.now(timezone.utc)
     found = []
     seen_now = set()
-    for username in ("k_dvizh", "eradarrua", "kievreal1"):
+    for username in ("k_dvizh", "eradarrua", "kievreal1", "war_monitor"):
         try:
             html = requests.get(
                 f"https://t.me/s/{username}",
@@ -285,7 +290,7 @@ def fetch_course_items() -> list:
             html,
             flags=re.I | re.S,
         )
-        for raw in chunks[:8]:
+        for raw in chunks[:10]:
             dt_m = re.search(r'datetime="([^"]+)"', raw)
             if not dt_m:
                 continue
@@ -406,19 +411,19 @@ async def scheduled_course():
     if WAVE.get("ended_at") and time.time() - WAVE["ended_at"] < 180:
         print("AIR course hold after all-clear")
         return
-    if not WAVE.get("kyiv"):
-        try:
-            off = fetch_official_alerts()
-            if off.get("kyiv"):
-                WAVE["kyiv"] = True
-                WAVE["ended_at"] = 0.0
-                print("AIR wave on via official")
-            else:
-                print("AIR course idle")
-                return
-        except Exception as e:
-            print(f"AIR official {e}")
-            return
+
+    official_kyiv = False
+    try:
+        official_kyiv = bool((fetch_official_alerts() or {}).get("kyiv"))
+    except Exception as e:
+        print(f"AIR official {e}")
+
+    if official_kyiv:
+        WAVE["kyiv"] = True
+        WAVE["ended_at"] = 0.0
+    elif not WAVE.get("kyiv"):
+        print("AIR course idle")
+        return
 
     items = fetch_course_items()
     if not items:

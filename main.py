@@ -1055,7 +1055,6 @@ async def cmd_emoji(message: Message):
 async def scheduled_news():
     import time
     from news_engine import (
-        is_breaking,
         is_same_story,
         prepare_chitko_news,
         news_fingerprint,
@@ -1073,10 +1072,6 @@ async def scheduled_news():
         "вишнев", "бровар", "ірпін", "ірпен", "буча",
         "вишгород", "бориспіл", "бориспіль", "погреб",
         "дврз", "тець", "тец-5", "мерседес",
-    )
-    WORLD_SKIP = (
-        "іран", "иран", "гіперзвук", "гиперзвук", "ft:",
-        "reuters", "китай", "тайван", "трамп",
     )
 
     def is_kyiv_item(news: dict) -> bool:
@@ -1118,10 +1113,7 @@ async def scheduled_news():
             if any(k in blob for k in TRACKER_SKIP):
                 print(f"SKIP tracker {title[:60]}")
                 continue
-            if any(k in blob for k in WORLD_SKIP):
-                print(f"SKIP world {title[:60]}")
-                continue
-            if kyiv_alert and (not is_hit_story(item)) and (not is_kyiv_item(item)):
+            if kyiv_alert and not is_hit_story(item):
                 print(f"SKIP during alert {title[:60]}")
                 continue
             filtered.append(item)
