@@ -292,7 +292,6 @@ def format_air_post(decision: dict) -> str:
 
     return f"{line}\n\n{body}\n\n<b>ЧІТКО</b>"
 
-
 def process_air_cycle() -> dict:
     state = load_state()
     current = fetch_official_alerts()

@@ -395,9 +395,11 @@ def fetch_tg_channel_posts() -> list:
     import hashlib
     import re
     import requests
-    from datetime import datetime
+    from datetime import datetime, timezone, timedelta
 
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+    max_age = timedelta(hours=1)
+    now = datetime.now(timezone.utc)
     out = []
     LAST_TG_STATS["checked"] = 0
     LAST_TG_STATS["skipped"] = 0
@@ -439,6 +441,20 @@ def fetch_tg_channel_posts() -> list:
         print(f"TG {username}: html={len(html)} chunks={len(messages)}")
 
         for raw in messages[:8]:
+            dt_m = re.search(r'datetime="([^"]+)"', raw)
+            if dt_m:
+                try:
+                    published = datetime.fromisoformat(dt_m.group(1).replace("Z", "+00:00"))
+                    if published.tzinfo is None:
+                        published = published.replace(tzinfo=timezone.utc)
+                    age = now - published
+                    if age > max_age or age.total_seconds() < -120:
+                        LAST_TG_STATS["skipped"] += 1
+                        print(f"TG old skip {username} {dt_m.group(1)}")
+                        continue
+                except Exception:
+                    pass
+
             text_bits = re.findall(
                 r'class="tgme_widget_message_text[^"]*"[^>]*>(.*?)</div>',
                 raw,
@@ -843,93 +859,14 @@ def select_for_publish(news_list: list, max_auto: int = 2) -> list:
     return picked[:max_auto]
 
 def fetch_and_score_news(limit: int = 40) -> list:
-    import hashlib
-    import feedparser
-
-    feeds = [
-        ("Суспільне", "https://suspilne.media/rss/", 8.5),
-        ("УП", "https://www.pravda.com.ua/rss/", 8.8),
-        ("Бабель", "https://babel.ua/rss", 8.6),
-        ("hromadske", "https://hromadske.ua/feed", 8.4),
-        ("Радіо Свобода", "https://www.radiosvoboda.org/api/zrqiteuuok", 8.7),
-        ("Укрінформ", "https://www.ukrinform.ua/rss/block-lastnews", 8.0),
-        ("ДСНС", "https://dsns.gov.ua/uk/news/rss", 9.0),
-    ]
-
-    published = set()
-    try:
-        published = set(load_published_ids() or [])
-    except Exception:
-        published = set()
-
     out = []
-    seen = set()
-
-    for source_name, url, trust in feeds:
-        try:
-            parsed = feedparser.parse(url)
-        except Exception as e:
-            print(f"FEED {source_name}: {e}")
-            continue
-
-        for entry in (parsed.entries or [])[:12]:
-            title = (entry.get("title") or "").strip()
-            link = (entry.get("link") or "").strip()
-            summary = (entry.get("summary") or entry.get("description") or "").strip()
-            if not title or not link:
-                continue
-
-            event_id = hashlib.md5(link.encode("utf-8")).hexdigest()
-            if event_id in published or event_id in seen:
-                continue
-            seen.add(event_id)
-
-            try:
-                score = float(calculate_importance(title, trust))
-            except Exception:
-                score = 50.0
-
-            image_url = None
-            media = entry.get("media_content") or entry.get("media_thumbnail") or []
-            if isinstance(media, list) and media:
-                image_url = media[0].get("url")
-            elif isinstance(media, dict):
-                image_url = media.get("url")
-            if not image_url:
-                enc = entry.get("enclosures") or []
-                if enc:
-                    image_url = enc[0].get("href")
-
-            try:
-                if image_url and is_bad_source_image(image_url):
-                    image_url = None
-            except Exception:
-                pass
-
-            news = {
-                "event_id": event_id,
-                "title": title,
-                "title_original": title,
-                "title_chitko": title,
-                "text": summary,
-                "summary": summary,
-                "body": summary,
-                "link": link,
-                "source": source_name,
-                "source_name": source_name,
-                "image_url": image_url,
-                "final_score": score,
-            }
-            news = apply_editorial_caps(news)
-            out.append(news)
-
     try:
-        out.extend(fetch_tg_channel_posts())
+        out = fetch_tg_channel_posts()
     except Exception as e:
         print(f"TG fetch: {e}")
-
+        out = []
     out.sort(key=lambda x: x.get("final_score") or 0, reverse=True)
-    print(f"FETCH scored={len(out)}")
+    print(f"FETCH tg_only scored={len(out)}")
     return out[:limit]
 
 def get_top_news_for_brief(count: int = 12) -> list:
