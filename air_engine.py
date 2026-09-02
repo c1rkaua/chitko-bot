@@ -263,34 +263,29 @@ def decide_alert_action(current: dict, state: dict) -> dict:
 def format_air_post(decision: dict) -> str:
     import re
 
-    CE_SIREN = '<tg-emoji emoji-id="5240038780349489613">🚨</tg-emoji>'
-    CE_REPEAT = '<tg-emoji emoji-id="5238053487551490162">🔁</tg-emoji>'
-    CE_GREEN = '<tg-emoji emoji-id="5240321801514427483">🟢</tg-emoji>'
-    CE_WARN = '<tg-emoji emoji-id="5238203141391951812">⚠️</tg-emoji>'
-    CE_DAY = '<tg-emoji emoji-id="5240025208252833961">✅</tg-emoji>'
-    CE_NIGHT = '<tg-emoji emoji-id="5240446544544572869">🌙</tg-emoji>'
-
     event = decision.get("event_type") or ""
     raw_title = decision.get("title") or ""
     title = re.sub(r"^[🚨🟢⚠️✅🌙😴🔁]+\s*", "", raw_title).strip()
     title = re.sub(r"\s*🚨\s*$", "", title).strip()
     body = (decision.get("text") or "").strip()
+    body = re.sub(r"</?tg-emoji[^>]*>", "", body)
+    body = body.replace("<b>", "").replace("</b>", "")
     is_repeat = "Повторна" in raw_title or event.startswith("ALERT_REPEAT")
 
     if is_repeat:
-        line = f"{CE_REPEAT}{CE_SIREN} <b>Повторна повітряна тривога</b> {CE_SIREN}"
+        line = "🔁🚨 Повторна повітряна тривога 🚨"
     elif event.startswith("ALERT_START"):
-        line = f"{CE_SIREN} <b>Повітряна тривога</b> {CE_SIREN}"
+        line = "🚨 Повітряна тривога 🚨"
     elif event.startswith("ALERT_UPDATE"):
-        line = f"{CE_WARN} <b>Оновлення щодо тривоги</b> {CE_WARN}"
+        line = "⚠️ Оновлення щодо тривоги ⚠️"
     elif event.startswith("ALERT_END"):
-        line = f"{CE_GREEN} <b>Відбій повітряної тривоги</b> {CE_GREEN}"
-        mark = CE_NIGHT if _is_night() else CE_DAY
+        line = "🟢 Відбій повітряної тривоги 🟢"
+        mark = "🌙" if _is_night() else "✅"
         body = f"{mark} {body}" if body else mark
     else:
-        line = f"{CE_SIREN} <b>{title or 'Повітряна тривога'}</b> {CE_SIREN}"
+        line = f"🚨 {title or 'Повітряна тривога'} 🚨"
 
-    return f"{line}\n\n{body}\n\n<b>ЧІТКО</b>"
+    return f"{line}\n\n{body}\n\nЧІТКО"
 
 def process_air_cycle() -> dict:
     state = load_state()

@@ -126,10 +126,14 @@ WAVE = {
 }
 
 SKIP_LINE = (
-    "реклам", "купим", "онлайн-карта",
-    "касетн", "карта ціл", "котики",
-    "приймальн", "перше вересня",
-    "в ніч на", "за приблизними", "застосував", "підсумок",
+    "підписатися", "подписаться", "присилайте", "присылайте",
+    "надіслати новину", "карта загроз", "мапа загроз",
+    "live map", "підтримай", "донат", "гривнєю",
+    "дорозвідк", "очікуйте офіційну",
+    "вижив", "сука оболон",
+    "ннннн", "ссссуууу",
+    "полтавщин", "чернігівщин", "нових на",
+    "відбоїв не буде",
 )
 
 KIND_UA = {
@@ -294,6 +298,11 @@ async def scheduled_siren():
     kyiv = bool((data.get("current") or {}).get("kyiv"))
     et = data.get("event_type") or ""
 
+    if kyiv and not WAVE.get("kyiv"):
+        WAVE["kyiv"] = True
+        WAVE["ended_at"] = 0.0
+        WAVE["seen"].clear()
+        print("AIR wave on")
     if et.startswith("ALERT_START") or et.startswith("ALERT_REPEAT"):
         WAVE["kyiv"] = True
         WAVE["ended_at"] = 0.0
@@ -306,7 +315,7 @@ async def scheduled_siren():
         except Exception:
             pass
         WAVE["pin_id"] = None
-    elif not kyiv and WAVE["kyiv"]:
+    elif not kyiv and WAVE.get("kyiv"):
         WAVE["kyiv"] = False
         WAVE["ended_at"] = time.time()
 
@@ -318,9 +327,13 @@ async def scheduled_siren():
         or et.startswith("ALERT_REPEAT")
     ):
         return
+
     text = format_air_post(data).strip()
+    text = re.sub(r"</?tg-emoji[^>]*>", "", text)
+    text = text.replace("<b>", "").replace("</b>", "")
     if len(text) < 20:
         return
+
     raw_title = data.get("title") or ""
     if "Повторна" in raw_title or et.startswith("ALERT_REPEAT"):
         kind = "repeat"
@@ -330,14 +343,12 @@ async def scheduled_siren():
         kind = "end"
     else:
         kind = "update"
-    ents = pack_entities(text, kind)
+    ents = pack_entities(text, kind) if "pack_entities" in globals() else None
     try:
-        sent = await bot.send_message(
-            CHANNEL_ID,
-            text,
-            parse_mode=None,
-            entities=ents,
-        )
+        kwargs = {"parse_mode": None}
+        if ents:
+            kwargs["entities"] = ents
+        sent = await bot.send_message(CHANNEL_ID, text, **kwargs)
         if et.startswith("ALERT_END"):
             try:
                 await bot.unpin_all_chat_messages(chat_id=CHANNEL_ID)
@@ -347,14 +358,29 @@ async def scheduled_siren():
             await pin_last(sent.message_id)
     except Exception as e:
         print(f"AIR send siren {e}")
+        try:
+            await bot.send_message(CHANNEL_ID, text, parse_mode=None)
+        except Exception as e2:
+            print(f"AIR send siren fallback {e2}")
 
 async def scheduled_course():
     if WAVE.get("ended_at") and time.time() - WAVE["ended_at"] < 180:
         print("AIR course hold after all-clear")
         return
     if not WAVE.get("kyiv"):
-        print("AIR course idle")
-        return
+        try:
+            off = fetch_official_alerts()
+            if off.get("kyiv"):
+                WAVE["kyiv"] = True
+                WAVE["ended_at"] = 0.0
+                print("AIR wave on via official")
+            else:
+                print("AIR course idle")
+                return
+        except Exception as e:
+            print(f"AIR official {e}")
+            return
+
     items = fetch_course_items()
     if not items:
         print("AIR course empty")
@@ -366,6 +392,8 @@ async def scheduled_course():
             continue
         WAVE["seen"].add(fp)
         text = format_course(item)
+        text = re.sub(r"</?tg-emoji[^>]*>", "", text)
+        text = re.sub(r"</?b>", "", text)
         kind = "loud" if item["kind"] == "LOUD" else "course"
         ents = pack_entities(text, kind)
         try:
