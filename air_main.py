@@ -347,6 +347,7 @@ async def scheduled_siren():
     elif et.startswith("ALERT_END"):
         WAVE["kyiv"] = False
         WAVE["ended_at"] = time.time()
+        WAVE["seen"].clear()
         try:
             await bot.unpin_all_chat_messages(chat_id=CHANNEL_ID)
         except Exception:
@@ -355,6 +356,7 @@ async def scheduled_siren():
     elif not kyiv and WAVE.get("kyiv"):
         WAVE["kyiv"] = False
         WAVE["ended_at"] = time.time()
+        WAVE["seen"].clear()
 
     if data.get("action") != "PUBLISH":
         return
@@ -391,7 +393,7 @@ async def scheduled_siren():
                 await bot.unpin_all_chat_messages(chat_id=CHANNEL_ID)
             except Exception:
                 pass
-        else:
+        elif et.startswith("ALERT_START") or et.startswith("ALERT_REPEAT"):
             await pin_last(sent.message_id)
     except Exception as e:
         print(f"AIR send siren {e}")
