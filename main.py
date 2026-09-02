@@ -687,15 +687,14 @@ def mark_sent_today(kind: str) -> None:
     with open(_mark_path(kind), "w") as f:
         f.write(day)
 
-
 async def scheduled_brief():
     if already_sent_today("brief"):
-        print("BRIEF already today")
+        print("BRIEF already sent")
         return
-    text = await create_morning_brief()
-    cover = os.path.join(os.path.dirname(__file__), "assets", "cover_ranok.jpg")
     try:
-        if os.path.exists(cover):
+        text = await create_morning_brief()
+        cover = _mark_path("cover_ranok.jpg")
+        if cover:
             await bot.send_photo(
                 CHANNEL_ID,
                 photo=FSInputFile(cover),
@@ -705,21 +704,20 @@ async def scheduled_brief():
         else:
             await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
         mark_sent_today("brief")
-        await bot.send_message(ADMIN_GROUP_ID, "Ранковий бріф опубліковано в канал.")
+        print("BRIEF sent")
     except Exception as e:
-        print(f"BRIEF send {e}")
-        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-        mark_sent_today("brief")
-
+        print(f"BRIEF fail {e}")
 
 async def scheduled_evening_digest():
     if already_sent_today("digest"):
-        print("DIGEST already today")
+        print("DIGEST already sent")
         return
-    text = await create_evening_digest()
-    cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
     try:
-        if os.path.exists(cover):
+        text = await create_evening_digest()
+        cover = _mark_path("cover_vechir.jpg")
+        if not cover:
+            cover = _mark_path("cover_ranok.jpg")
+        if cover:
             await bot.send_photo(
                 CHANNEL_ID,
                 photo=FSInputFile(cover),
@@ -729,9 +727,9 @@ async def scheduled_evening_digest():
         else:
             await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
         mark_sent_today("digest")
-        await bot.send_message(ADMIN_GROUP_ID, "Вечірній дайджест опубліковано в канал.")
+        print("DIGEST sent")
     except Exception as e:
-        print(f"DIGEST send {e}")
+        print(f"DIGEST fail {e}")
 
 def is_english_post(news: dict, formatted: str) -> bool:
     blob = " ".join([
