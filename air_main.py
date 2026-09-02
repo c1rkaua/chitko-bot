@@ -138,30 +138,33 @@ def parse_course_line(raw: str) -> dict | None:
 
 
 def format_course(item: dict) -> str:
+    CE_WARN = '<tg-emoji emoji-id="5238203141391951812">⚠️</tg-emoji>'
+    CE_LOUD = '<tg-emoji emoji-id="5240501069154396615">⚠️</tg-emoji>'
+
     if item["kind"] == "LOUD":
         return (
-            f"⚠️ <b>Гучно</b> ⚠️\n\n"
+            f"{CE_LOUD} <b>Гучно</b> {CE_LOUD}\n\n"
             f"{item['place']}.\n"
             f"Пройдіть в укриття.\n\n"
             f"<b>ЧІТКО</b>"
         )
     if item["kind"] == "CLEAR":
         return (
-            f"⚠️ <b>Курс</b> ⚠️\n\n"
+            f"{CE_WARN} <b>Курс</b> {CE_WARN}\n\n"
             f"Поки чисто над Києвом.\n"
             f"Загроза ще не знята.\n\n"
             f"<b>ЧІТКО</b>"
         )
     if item["kind"] == "LAUNCH":
         return (
-            f"⚠️ <b>Курс</b> ⚠️\n\n"
+            f"{CE_WARN} <b>Курс</b> {CE_WARN}\n\n"
             f"Ще пуски.\n"
             f"Пройдіть в укриття.\n\n"
             f"<b>ЧІТКО</b>"
         )
     line = ua_kind(item.get("n") or 1, item["kind"])
     return (
-        f"⚠️ <b>Курс</b> ⚠️\n\n"
+        f"{CE_WARN} <b>Курс</b> {CE_WARN}\n\n"
         f"{line} — {item['place']}.\n"
         f"Пройдіть в укриття.\n\n"
         f"<b>ЧІТКО</b>"

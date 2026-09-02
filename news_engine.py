@@ -73,15 +73,18 @@ CIVILIAN_KEYS = [
 TRACKER_SKIP = [
     "на центр", "гучно на", "відбій", "отбой",
     "тривога йбн", "повітряна тривога", "air siren",
-    "1 реактив", "2 реактив", "полетів в область",
-    "підписатися", "присылайте контент", "по рекламе",
-    "надіслати новину", "онлайн-карта",
+    "онлайн-карта", "карта ціл",
     "курсом на", "2 на бровари", "на бровари курсом",
+    "полетів в область",
 ]
 
 WAR_FILLER_KEYS = [
     "генштаб зведення", "за добу знешкоджено", "окупанти не полишають",
     "триває відсіч", "на купянському",
+    "supercam", "суперкам",
+    "захищаються від", "дронів-перехоплювач",
+    "путін заявив", "путин заявил",
+    "звільнення донбасу триває",
 ]
 
 PUBLISHED_FILE = "published_ids.json"
@@ -350,36 +353,20 @@ def is_hit_story(news: dict) -> bool:
 def extract_tg_media(chunk: str) -> dict:
     import re
 
-    low_head = (chunk or "")[:400].lower()
-    video = None
-    m = re.search(
-        r'<video[^>]+src=["\'](https://cdn4\.telesco\.pe/file/[^"\']+)',
+    videos = []
+    seen_v = set()
+    for u in re.findall(
+        r'https://cdn4\.telesco\.pe/file/[^"\'\s>]+\.mp4[^"\'\s>]*',
         chunk or "",
         re.I,
-    )
-    if not m:
-        m = re.search(
-            r'(https://cdn4\.telesco\.pe/file/[^"\s\']+\.mp4\?[^"\s\']+)',
-            chunk or "",
-            re.I,
-        )
-    if not m:
-        m = re.search(
-            r'(https://cdn4\.telesco\.pe/file/[A-Za-z0-9_\-]+(?:\?[^"\s\']+)?)',
-            chunk or "",
-            re.I,
-        )
-        if m and ("video" in low_head or "tgme_widget_message_video" in (chunk or "").lower()):
-            video = m.group(1)
-    elif m:
-        video = m.group(1)
-
-    if video and "userpic" not in video.lower():
-        print(f"TG video ok {video[:70]}")
-        return {"photos": [], "video": video}
+    ):
+        if "userpic" in u.lower() or u in seen_v:
+            continue
+        seen_v.add(u)
+        videos.append(u)
 
     photos = []
-    seen = set()
+    seen_p = set()
     parts = re.split(r"tgme_widget_message_photo", chunk or "")
     for block in parts[1:]:
         head = block[:300].lower()
@@ -393,11 +380,15 @@ def extract_tg_media(chunk: str) -> dict:
             ul = u.lower()
             if ".mp4" in ul or "emoji" in ul or "userpic" in ul:
                 continue
-            if u not in seen:
-                seen.add(u)
+            if u not in seen_p:
+                seen_p.add(u)
                 photos.append(u)
-    print(f"TG photos {len(photos)}")
-    return {"photos": photos[:4], "video": None}
+    print(f"TG media v={len(videos)} p={len(photos)}")
+    return {
+        "photos": photos[:10],
+        "videos": videos[:4],
+        "video": videos[0] if videos else None,
+    }
 
 def fetch_tg_channel_posts() -> list:
     global LAST_TG_STATS
@@ -414,7 +405,15 @@ def fetch_tg_channel_posts() -> list:
     LAST_TG_STATS["by_channel"] = {}
     LAST_TG_STATS["when"] = datetime.now().strftime("%H:%M")
 
-    for username, meta in TG_SOURCES.items():
+    order = [
+        "lachentyt", "NovynaUKR", "kyivoperat", "k_dvizh",
+        "truexanewsua", "obolon_info", "insiderUKR",
+    ]
+    rest = [u for u in TG_SOURCES if u not in order]
+    names = [u for u in order if u in TG_SOURCES] + rest
+
+    for username in names:
+        meta = TG_SOURCES[username]
         kept = 0
         html = ""
         messages = []
@@ -449,7 +448,10 @@ def fetch_tg_channel_posts() -> list:
             text = re.sub(r"<br\s*/?>", "\n", blob, flags=re.I)
             text = re.sub(r"<[^>]+>", " ", text)
             text = re.sub(r"\s+", " ", text).strip()
-            if len(text) < 40:
+            text = re.sub(r"підписатися.*", "", text, flags=re.I)
+            text = re.sub(r"присылайте.*", "", text, flags=re.I)
+            text = text.strip()
+            if len(text) < 25:
                 LAST_TG_STATS["skipped"] += 1
                 continue
             low = text.lower()
@@ -463,12 +465,6 @@ def fetch_tg_channel_posts() -> list:
             if not local and not meta.get("allow_national"):
                 LAST_TG_STATS["skipped"] += 1
                 continue
-            if not local and len(text) < 90:
-                LAST_TG_STATS["skipped"] += 1
-                continue
-            if len(text) < 80 and any(k in low for k in ("вибух", "гучно", "на центр")):
-                LAST_TG_STATS["skipped"] += 1
-                continue
 
             media = extract_tg_media(raw)
             title = text.split(".")[0].strip()[:140]
@@ -478,6 +474,8 @@ def fetch_tg_channel_posts() -> list:
                 score = float(calculate_importance(title, trust))
             except Exception:
                 score = 70.0
+            if is_hit_story({"title": title, "text": text}):
+                score = max(score, 92)
             news = {
                 "event_id": event_id,
                 "title": title,
@@ -934,8 +932,8 @@ def fetch_and_score_news(limit: int = 40) -> list:
     print(f"FETCH scored={len(out)}")
     return out[:limit]
 
-def get_top_news_for_brief(count: int = 4) -> list:
-    news = fetch_and_score_news()
+def get_top_news_for_brief(count: int = 12) -> list:
+    news = fetch_and_score_news(40)
     try:
         recent = load_recent_titles() or []
     except Exception:
@@ -951,8 +949,11 @@ def get_top_news_for_brief(count: int = 4) -> list:
         seen_now.append(title)
         unique.append(item)
 
-    print(f"DEDUP {len(news)} -> {len(unique)}")
-    return unique[:count]
+    hits = [x for x in unique if is_hit_story(x)]
+    rest = [x for x in unique if x not in hits]
+    ordered = hits + rest
+    print(f"DEDUP {len(news)} -> {len(ordered)} hits={len(hits)}")
+    return ordered[: max(count, 12)]
 
 # ====================== ТЕСТ ======================
 
@@ -1342,6 +1343,8 @@ def prepare_chitko_news(news: dict):
 def format_news_post(news: dict) -> str:
     import re
 
+    CE_BOLT = '<tg-emoji emoji-id="5237977689968651276">⚡️</tg-emoji>'
+
     title = (news.get("title_chitko") or news.get("title_original") or news.get("title") or "").strip()
     body = (news.get("body_chitko") or news.get("text_chitko") or news.get("text") or news.get("summary") or "").strip()
     if len(title) < 8:
@@ -1366,7 +1369,7 @@ def format_news_post(news: dict) -> str:
         mid = max(2, (len(parts) + 1) // 2)
         body_block = " ".join(parts[:mid]) + "\n\n" + " ".join(parts[mid:])
 
-    lines = [f"<b>⚡️ {title}</b>"]
+    lines = [f"<b>{CE_BOLT} {title}</b>"]
     if body_block:
         lines += ["", body_block]
     lines += ["", "<b>ЧІТКО</b>"]

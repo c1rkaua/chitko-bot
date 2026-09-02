@@ -263,25 +263,32 @@ def decide_alert_action(current: dict, state: dict) -> dict:
 def format_air_post(decision: dict) -> str:
     import re
 
+    CE_SIREN = '<tg-emoji emoji-id="5240038780349489613">🚨</tg-emoji>'
+    CE_REPEAT = '<tg-emoji emoji-id="5238053487551490162">🔁</tg-emoji>'
+    CE_GREEN = '<tg-emoji emoji-id="5240321801514427483">🟢</tg-emoji>'
+    CE_WARN = '<tg-emoji emoji-id="5238203141391951812">⚠️</tg-emoji>'
+    CE_DAY = '<tg-emoji emoji-id="5240025208252833961">✅</tg-emoji>'
+    CE_NIGHT = '<tg-emoji emoji-id="5240446544544572869">🌙</tg-emoji>'
+
     event = decision.get("event_type") or ""
     raw_title = decision.get("title") or ""
     title = re.sub(r"^[🚨🟢⚠️✅🌙😴🔁]+\s*", "", raw_title).strip()
     title = re.sub(r"\s*🚨\s*$", "", title).strip()
     body = (decision.get("text") or "").strip()
+    is_repeat = "Повторна" in raw_title or event.startswith("ALERT_REPEAT")
 
-    if event == "ALERT_START" and "Повторна" in raw_title:
-        line = "🔁🚨 <b>Повторна повітряна тривога</b>🚨"
-    elif event == "ALERT_START":
-        line = "🚨 <b>Повітряна тривога</b> 🚨"
-    elif event == "ALERT_UPDATE":
-        line = "⚠️ <b>Оновлення щодо тривоги</b>⚠️"
-    elif event == "ALERT_END_KYIV":
-        line = "🟢 <b>Відбій у Києві</b>🟢"
-    elif event == "ALERT_END":
-        mark = "🌙" if _is_night() else "✅"
-        line = f"{mark} <b>Відбій повітряної тривоги</b>"
+    if is_repeat:
+        line = f"{CE_REPEAT}{CE_SIREN} <b>Повторна повітряна тривога</b> {CE_SIREN}"
+    elif event.startswith("ALERT_START"):
+        line = f"{CE_SIREN} <b>Повітряна тривога</b> {CE_SIREN}"
+    elif event.startswith("ALERT_UPDATE"):
+        line = f"{CE_WARN} <b>Оновлення щодо тривоги</b> {CE_WARN}"
+    elif event.startswith("ALERT_END"):
+        line = f"{CE_GREEN} <b>Відбій повітряної тривоги</b> {CE_GREEN}"
+        mark = CE_NIGHT if _is_night() else CE_DAY
+        body = f"{mark} {body}" if body else mark
     else:
-        line = f"🚨 <b>{title or 'Повітряна тривога'}</b>🚨"
+        line = f"{CE_SIREN} <b>{title or 'Повітряна тривога'}</b> {CE_SIREN}"
 
     return f"{line}\n\n{body}\n\n<b>ЧІТКО</b>"
 
