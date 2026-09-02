@@ -9,21 +9,20 @@ import os
 PUBLISHED_FILE = "published_ids.json"
 
 TG_SOURCES = {
-    "kyivoperat": {"name": "Київ Оперативний", "trust": 9.8, "allow_national": False},
-    "NovynaUKR": {"name": "НОВИНА", "trust": 9.7, "allow_national": True},
-    "uniannet": {"name": "УНІАН", "trust": 9.7, "allow_national": True},
-    "tsnua": {"name": "ТСН", "trust": 9.3, "allow_national": True},
-    "nvua": {"name": "NV", "trust": 9.3, "allow_national": True},
-    "babel": {"name": "Бабель", "trust": 9.0, "allow_national": True},
-    "hromadske": {"name": "hromadske", "trust": 9.0, "allow_national": True},
-    "dsns_telegram": {"name": "ДСНС", "trust": 9.5, "allow_national": True},
-    "obolon_info": {"name": "Оболонь INFO", "trust": 9.8, "allow_national": False},
-    "k_dvizh": {"name": "Киевский Движ", "trust": 9.8, "allow_national": False},
-    "truexanewsua": {"name": "Труха Україна", "trust": 9.7, "allow_national": True},
     "lachentyt": {"name": "Лачен пише", "trust": 9.8, "allow_national": True},
-    "times_ukraina": {"name": "Times of Ukraine", "trust": 9.2, "allow_national": True},
+    "NovynaUKR": {"name": "НОВИНА", "trust": 9.7, "allow_national": True},
+    "kyivoperat": {"name": "Київ Оперативний", "trust": 9.8, "allow_national": False},
+    "k_dvizh": {"name": "Киевский Движ", "trust": 9.8, "allow_national": False},
+    "ENOVUNA": {"name": "Є Новина", "trust": 9.6, "allow_national": True},
+    "ragnarockkyiv": {"name": "Ragnarok Kyiv", "trust": 9.6, "allow_national": False},
+    "kyiv_xy": {"name": "Kyiv XY", "trust": 9.5, "allow_national": False},
+    "svoiua": {"name": "Свої", "trust": 9.5, "allow_national": True},
+    "truexanewsua": {"name": "Труха Україна", "trust": 9.7, "allow_national": True},
+    "obolon_info": {"name": "Оболонь INFO", "trust": 9.8, "allow_national": False},
     "insiderUKR": {"name": "Інсайдер UA", "trust": 9.6, "allow_national": True},
     "vanek_nikolaev": {"name": "Миколаївський Ванек", "trust": 9.7, "allow_national": True},
+    "uniannet": {"name": "УНІАН", "trust": 9.4, "allow_national": True},
+    "times_ukraina": {"name": "Times of Ukraine", "trust": 9.2, "allow_national": True},
 }
 
 CIVILIAN_KEYS = [
@@ -408,8 +407,17 @@ def fetch_tg_channel_posts() -> list:
     LAST_TG_STATS["when"] = datetime.now().strftime("%H:%M")
 
     order = [
-        "lachentyt", "NovynaUKR", "kyivoperat", "k_dvizh",
-        "truexanewsua", "obolon_info", "insiderUKR",
+        "lachentyt",
+        "NovynaUKR",
+        "kyivoperat",
+        "k_dvizh",
+        "ENOVUNA",
+        "ragnarockkyiv",
+        "kyiv_xy",
+        "svoiua",
+        "truexanewsua",
+        "obolon_info",
+        "insiderUKR",
     ]
     rest = [u for u in TG_SOURCES if u not in order]
     names = [u for u in order if u in TG_SOURCES] + rest
