@@ -361,15 +361,23 @@ def extract_tg_media(chunk: str) -> dict:
 
     videos = []
     seen_v = set()
-    for u in re.findall(
-        r'https://cdn4\.telesco\.pe/file/[^"\'\s>]+\.mp4[^"\'\s>]*',
-        chunk or "",
-        re.I,
-    ):
-        if "userpic" in u.lower() or u in seen_v:
-            continue
-        seen_v.add(u)
-        videos.append(u)
+    patterns = (
+        r'https://cdn\d+\.telesco\.pe/file/[^"\'\s>]+\.mp4[^"\'\s>]*',
+        r'https://cdn\d+\.telegram-cdn\.org/file/[^"\'\s>]+\.mp4[^"\'\s>]*',
+        r'src="(https://cdn\d+\.(?:telesco\.pe|telegram-cdn\.org)/file/[^"]+)"',
+        r'video_player[^>]+src="([^"]+)"',
+    )
+    for pat in patterns:
+        for u in re.findall(pat, chunk or "", re.I):
+            if u.startswith("http") is False:
+                continue
+            ul = u.lower()
+            if "userpic" in ul or "emoji" in ul or u in seen_v:
+                continue
+            if ".mp4" not in ul and "video" not in ul:
+                continue
+            seen_v.add(u)
+            videos.append(u)
 
     photos = []
     seen_p = set()
@@ -379,7 +387,7 @@ def extract_tg_media(chunk: str) -> dict:
         if "userpic" in head or "emoji" in head:
             continue
         raw = re.findall(
-            r"background-image:url\('?(https?://cdn4\.telesco\.pe/file/[^')\s]+)'?\)",
+            r"background-image:url\('?(https?://cdn\d+\.(?:telesco\.pe|telegram-cdn\.org)/file/[^')\s]+)'?\)",
             block,
         )
         for u in raw:
@@ -389,6 +397,7 @@ def extract_tg_media(chunk: str) -> dict:
             if u not in seen_p:
                 seen_p.add(u)
                 photos.append(u)
+
     print(f"TG media v={len(videos)} p={len(photos)}")
     return {
         "photos": photos[:10],
