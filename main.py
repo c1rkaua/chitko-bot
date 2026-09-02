@@ -40,12 +40,21 @@ dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone="Europe/Kyiv")
 
 def is_english_post(news: dict, formatted: str) -> bool:
-    blob = " ".join([
+    t = " ".join([
         news.get("title_chitko") or "",
         news.get("title") or "",
         formatted or "",
-    ])
-    letters = [c for c in blob if c.isalpha()]
+    ]).lower()
+    ru = (
+        " баллист", " слышн", " мощн", " взрыв", " по киеву",
+        " монитор", " калибр", " уже 17",
+        " годами", " поддержива", " государственной",
+        " древесина", " кубометров", " схемы с",
+        " даниил ", " маландий",
+    )
+    if any(x in t for x in ru):
+        return True
+    letters = [c for c in t if c.isalpha()]
     if len(letters) < 20:
         return False
     latin = sum(1 for c in letters if "a" <= c.lower() <= "z")
@@ -623,7 +632,31 @@ async def cmd_stats(message: Message):
 # Запуск
 # ======================
 
+def _mark_path(kind: str) -> str:
+    return os.path.join(os.path.dirname(__file__), f"sent_{kind}.txt")
+
+
+def already_sent_today(kind: str) -> bool:
+    from zoneinfo import ZoneInfo
+    path = _mark_path(kind)
+    day = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d")
+    try:
+        return open(path, "r").read().strip() == day
+    except Exception:
+        return False
+
+
+def mark_sent_today(kind: str) -> None:
+    from zoneinfo import ZoneInfo
+    day = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d")
+    with open(_mark_path(kind), "w") as f:
+        f.write(day)
+
+
 async def scheduled_brief():
+    if already_sent_today("brief"):
+        print("BRIEF already today")
+        return
     text = await create_morning_brief()
     cover = os.path.join(os.path.dirname(__file__), "assets", "cover_ranok.jpg")
     try:
@@ -635,14 +668,19 @@ async def scheduled_brief():
                 parse_mode="HTML",
             )
         else:
-            print("BRIEF no cover file")
             await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        mark_sent_today("brief")
         await bot.send_message(ADMIN_GROUP_ID, "Ранковий бріф опубліковано в канал.")
     except Exception as e:
         print(f"BRIEF send {e}")
         await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+        mark_sent_today("brief")
+
 
 async def scheduled_evening_digest():
+    if already_sent_today("digest"):
+        print("DIGEST already today")
+        return
     text = await create_evening_digest()
     cover = os.path.join(os.path.dirname(__file__), "assets", "cover_digest.jpg")
     try:
@@ -655,13 +693,10 @@ async def scheduled_evening_digest():
             )
         else:
             await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
-        await bot.send_message(
-            ADMIN_GROUP_ID,
-            "Вечірній дайджест опубліковано в канал.",
-        )
+        mark_sent_today("digest")
+        await bot.send_message(ADMIN_GROUP_ID, "Вечірній дайджест опубліковано в канал.")
     except Exception as e:
         print(f"DIGEST send {e}")
-        await bot.send_message(ADMIN_GROUP_ID, f"Дайджест упав: {e}")
 
 def is_english_post(news: dict, formatted: str) -> bool:
     blob = " ".join([
@@ -957,6 +992,8 @@ async def scheduled_news():
         prepare_chitko_news,
         news_fingerprint,
         is_hit_story,
+        fetch_and_score_news,
+        WAR_FILLER_KEYS,
     )
 
     if NEWS_LOCK.get("on"):
@@ -964,7 +1001,7 @@ async def scheduled_news():
         return
     NEWS_LOCK["on"] = True
     try:
-        raw = get_top_news_for_brief(12)
+        raw = fetch_and_score_news(40)
         now = time.time()
         sent = 0
 
@@ -976,6 +1013,9 @@ async def scheduled_news():
                 score = float(news.get("final_score") or 0)
                 hit = is_hit_story(news)
                 if score < 60 and not hit:
+                    continue
+                blob = ((news.get("title") or "") + " " + (news.get("text") or "")).lower()
+                if any(x in blob for x in WAR_FILLER_KEYS) and not hit:
                     continue
                 fp = news_fingerprint(news)
                 if any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
@@ -992,8 +1032,11 @@ async def scheduled_news():
                 formatted = format_news_post(news)
                 if not formatted or "⚡️" not in formatted:
                     continue
+                if is_english_post(news, formatted):
+                    print("SEND skip ru/en")
+                    continue
                 breaking = is_breaking(news) or hit
-                if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 30 * 60:
+                if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 12 * 60:
                     continue
                 await send_news_to_channel(news, formatted)
                 LAST_AUTO_NEWS["at"] = now
@@ -1007,7 +1050,7 @@ async def scheduled_news():
                 recent.append(fp2)
                 save_recent_titles(recent)
                 sent += 1
-                print(f"{tag} sent")
+                print(f"{tag} sent {fp2[:80]}")
                 return
 
         hits = [n for n in raw if is_hit_story(n)]
@@ -1019,6 +1062,23 @@ async def scheduled_news():
             await publish_one(mix, "MIX")
     finally:
         NEWS_LOCK["on"] = False
+
+@dp.message()
+async def catch_emoji_id(message: Message):
+    if str(message.chat.id) != str(ADMIN_GROUP_ID):
+        return
+    if message.text and message.text.startswith("/"):
+        return
+    bits = []
+    if message.sticker:
+        bits.append(f"sticker file_id={message.sticker.file_id}")
+        bits.append(f"custom_emoji_id={message.sticker.custom_emoji_id}")
+    ents = list(message.entities or []) + list(message.caption_entities or [])
+    for e in ents:
+        cid = getattr(e, "custom_emoji_id", None)
+        bits.append(f"{e.type} custom_emoji_id={cid} offset={e.offset}")
+    if bits:
+        await message.answer("\n".join(bits))
         
 async def main():
     print("Я заработал")
@@ -1040,11 +1100,34 @@ async def main():
     scheduler.add_job(
         scheduled_brief,
         CronTrigger(hour=7, minute=0, timezone="Europe/Kyiv"),
+        misfire_grace_time=10800,
+        id="brief",
+        replace_existing=True,
     )
-    scheduler.add_job(scheduled_news, "interval", minutes=2)
+    scheduler.add_job(
+        scheduled_brief,
+        CronTrigger(hour=7, minute=15, timezone="Europe/Kyiv"),
+        id="brief_retry",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        scheduled_news,
+        "interval",
+        minutes=2,
+        misfire_grace_time=60,
+    )
     scheduler.add_job(
         scheduled_evening_digest,
         CronTrigger(hour=22, minute=0, timezone="Europe/Kyiv"),
+        misfire_grace_time=10800,
+        id="digest",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        scheduled_evening_digest,
+        CronTrigger(hour=22, minute=15, timezone="Europe/Kyiv"),
+        id="digest_retry",
+        replace_existing=True,
     )
 
     scheduler.start()
