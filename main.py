@@ -25,7 +25,42 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
-from aiogram.types import FSInputFile
+from aiogram.types import MessageEntity
+
+def u16(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
+
+def news_entities(text: str) -> list:
+    from aiogram.types import MessageEntity
+
+    ents = []
+    bolt = "⚡️"
+    if text.startswith(bolt):
+        ents.append(MessageEntity(
+            type="custom_emoji",
+            offset=0,
+            length=u16(bolt),
+            custom_emoji_id="5237977689968651276",
+        ))
+    first = text.split("\n", 1)[0]
+    title = first.replace("⚡️", "").strip()
+    t_at = first.find(title)
+    if t_at >= 0:
+        ents.append(MessageEntity(
+            type="bold",
+            offset=u16(text[:t_at]),
+            length=u16(title),
+        ))
+    foot = "ЧІТКО"
+    f_at = text.rfind(foot)
+    if f_at >= 0:
+        ents.append(MessageEntity(
+            type="bold",
+            offset=u16(text[:f_at]),
+            length=u16(foot),
+        ))
+    return ents
 
 pending_news = {}  # тимчасове сховище новин на апрув
 
@@ -731,6 +766,8 @@ async def send_news_to_channel(news: dict, formatted: str):
         print("SEND skip english")
         return
 
+    ents = news_entities(formatted)
+
     def download(url: str, suffix=".jpg"):
         try:
             r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
@@ -786,7 +823,7 @@ async def send_news_to_channel(news: dict, formatted: str):
                 CHANNEL_ID,
                 video=FSInputFile(vfiles[0]),
                 caption=formatted,
-                parse_mode="HTML",
+                caption_entities=ents,
             )
             print("SEND video")
             return
@@ -796,29 +833,27 @@ async def send_news_to_channel(news: dict, formatted: str):
                 InputMediaVideo(
                     media=FSInputFile(vfiles[0]),
                     caption=formatted,
-                    parse_mode="HTML",
+                    caption_entities=ents,
                 )
             ]
-            for p in vfiles[1:]:
-                media.append(InputMediaVideo(media=FSInputFile(p)))
+            for vf in vfiles[1:4]:
+                media.append(InputMediaVideo(media=FSInputFile(vf)))
             await bot.send_media_group(CHANNEL_ID, media=media)
-            print(f"SEND videos {len(media)}")
+            print("SEND videos")
             return
 
         if vfiles and pfiles:
-            await bot.send_video(
-                CHANNEL_ID,
-                video=FSInputFile(vfiles[0]),
-                caption=formatted,
-                parse_mode="HTML",
-            )
-            extra = [
-                InputMediaPhoto(media=FSInputFile(p))
-                for p in pfiles[:9]
+            media = [
+                InputMediaVideo(
+                    media=FSInputFile(vfiles[0]),
+                    caption=formatted,
+                    caption_entities=ents,
+                )
             ]
-            if extra:
-                await bot.send_media_group(CHANNEL_ID, media=extra)
-            print("SEND video+photos")
+            for pf in pfiles[:3]:
+                media.append(InputMediaPhoto(media=FSInputFile(pf)))
+            await bot.send_media_group(CHANNEL_ID, media=media)
+            print("SEND mix")
             return
 
         if len(pfiles) >= 2:
@@ -826,13 +861,13 @@ async def send_news_to_channel(news: dict, formatted: str):
                 InputMediaPhoto(
                     media=FSInputFile(pfiles[0]),
                     caption=formatted,
-                    parse_mode="HTML",
+                    caption_entities=ents,
                 )
             ]
-            for p in pfiles[1:]:
-                media.append(InputMediaPhoto(media=FSInputFile(p)))
+            for pf in pfiles[1:10]:
+                media.append(InputMediaPhoto(media=FSInputFile(pf)))
             await bot.send_media_group(CHANNEL_ID, media=media)
-            print(f"SEND album {len(media)}")
+            print("SEND album")
             return
 
         if len(pfiles) == 1:
@@ -840,14 +875,20 @@ async def send_news_to_channel(news: dict, formatted: str):
                 CHANNEL_ID,
                 photo=FSInputFile(pfiles[0]),
                 caption=formatted,
-                parse_mode="HTML",
+                caption_entities=ents,
             )
+            print("SEND photo")
             return
 
-        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+        await bot.send_message(CHANNEL_ID, formatted, entities=ents)
+        print("SEND text")
     except Exception as e:
         print(f"SEND fail {e}")
-        await bot.send_message(CHANNEL_ID, formatted, parse_mode="HTML")
+        try:
+            await bot.send_message(CHANNEL_ID, formatted, entities=ents)
+            print("SEND text fallback")
+        except Exception as e2:
+            print(f"SEND text fail {e2}")
     finally:
         for p in paths:
             try:

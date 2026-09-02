@@ -1288,8 +1288,6 @@ def prepare_chitko_news(news: dict):
 def format_news_post(news: dict) -> str:
     import re
 
-    CE_BOLT = '<tg-emoji emoji-id="5237977689968651276">⚡️</tg-emoji>'
-
     title = (news.get("title_chitko") or news.get("title_original") or news.get("title") or "").strip()
     body = (news.get("body_chitko") or news.get("text_chitko") or news.get("text") or news.get("summary") or "").strip()
     if len(title) < 8:
@@ -1314,10 +1312,10 @@ def format_news_post(news: dict) -> str:
         mid = max(2, (len(parts) + 1) // 2)
         body_block = " ".join(parts[:mid]) + "\n\n" + " ".join(parts[mid:])
 
-    lines = [f"<b>{CE_BOLT} {title}</b>"]
+    lines = [f"⚡️ {title}"]
     if body_block:
         lines += ["", body_block]
-    lines += ["", "<b>ЧІТКО</b>"]
+    lines += ["", "ЧІТКО"]
     return "\n".join(lines)
 
 def apply_editorial_caps(news: dict) -> dict:
