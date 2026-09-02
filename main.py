@@ -664,7 +664,7 @@ async def cmd_status(message: Message):
     ]
     by = st.get("by_channel") or {}
     if not by:
-        lines.append("немає даних")
+        lines.append("немає даних — зачекай цикл або /news")
     else:
         for name, row in by.items():
             lines.append(
@@ -672,7 +672,6 @@ async def cmd_status(message: Message):
                 f"chunk={row.get('chunks', 0)} kept={row.get('kept', 0)}"
             )
     await message.answer("\n".join(lines))
-
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: Message):
