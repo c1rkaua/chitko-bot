@@ -1116,7 +1116,7 @@ async def scheduled_news():
         print(f"NEWS cycle fail {e}")
     finally:
         NEWS_LOCK["on"] = False
-        
+
 @dp.message()
 async def catch_emoji_id(message: Message):
     if str(message.chat.id) != str(ADMIN_GROUP_ID):
