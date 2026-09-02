@@ -423,7 +423,6 @@ async def scheduled_course():
         print("AIR course empty")
         return
 
-    last_sent = None
     for item in items:
         fp = item["fp"]
         if fp in WAVE["seen"]:
@@ -439,17 +438,10 @@ async def scheduled_course():
             kwargs = {"parse_mode": None}
             if ents:
                 kwargs["entities"] = ents
-            sent = await bot.send_message(CHANNEL_ID, text, **kwargs)
-            last_sent = sent
+            await bot.send_message(CHANNEL_ID, text, **kwargs)
             print(f"AIR course {fp} via {item.get('src')}")
         except Exception as e:
             print(f"AIR send course {e}")
-
-    if last_sent:
-        try:
-            await pin_last(last_sent.message_id)
-        except Exception as e:
-            print(f"AIR pin course {e}")
 
 async def main():
     print("AIR bot up")
