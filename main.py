@@ -1046,6 +1046,25 @@ async def scheduled_news():
         TRACKER_SKIP,
     )
 
+    KYIV_MARK = (
+        "київ", "киев", "оболон", "голосіїв", "голосеев",
+        "шевченк", "печерськ", "поділ", "подол", "дарниц",
+        "деснян", "святошин", "троєщин", "троещин",
+        "позняк", "осокорк", "нивк", "шуляв", "березняк",
+        "вишнев", "бровар", "ірпін", "ірпен", "буча",
+        "вишгород", "бориспіл", "бориспіль", "погреб",
+        "дврз", "тець", "тец-5", "мерседес",
+    )
+
+    def is_kyiv_item(news: dict) -> bool:
+        blob = " ".join([
+            news.get("title") or "",
+            news.get("title_chitko") or "",
+            news.get("text") or "",
+            news.get("body") or "",
+        ]).lower()
+        return any(k in blob for k in KYIV_MARK)
+
     if NEWS_LOCK.get("on"):
         print("NEWS lock skip")
         return
@@ -1072,9 +1091,18 @@ async def scheduled_news():
             filtered.append(item)
 
         unique = cluster_unique(filtered)
-        hits = [n for n in unique if is_hit_story(n)]
-        mix = [n for n in unique if n not in hits]
-        queue = hits + mix
+        kyiv_hits = [n for n in unique if is_hit_story(n) and is_kyiv_item(n)]
+        other_hits = [n for n in unique if is_hit_story(n) and n not in kyiv_hits]
+        kyiv_mix = [n for n in unique if (not is_hit_story(n)) and is_kyiv_item(n)]
+        other_mix = [
+            n for n in unique
+            if n not in kyiv_hits and n not in other_hits and n not in kyiv_mix
+        ]
+        queue = kyiv_hits + other_hits + kyiv_mix + other_mix
+        print(
+            f"QUEUE kyiv_hit={len(kyiv_hits)} hit={len(other_hits)} "
+            f"kyiv_mix={len(kyiv_mix)} mix={len(other_mix)}"
+        )
         last_auto = float(LAST_AUTO_NEWS.get("at") or 0)
 
         for item in queue:
@@ -1085,8 +1113,12 @@ async def scheduled_news():
                 continue
 
             hit = is_hit_story(item)
+            kyiv = is_kyiv_item(item)
             if (not hit) and last_auto and now - last_auto < 12 * 60:
                 print("HOLD mix")
+                continue
+            if hit and (not kyiv) and kyiv_hits and sent == 0:
+                print(f"HOLD non-kyiv hit {title[:60]}")
                 continue
 
             fp_now = news_fingerprint(item)
@@ -1114,7 +1146,7 @@ async def scheduled_news():
             LAST_AUTO_NEWS["at"] = now
             save_last_auto(now)
             sent += 1
-            print(f"AUTO {'HIT' if hit else 'MIX'} {title[:80]}")
+            print(f"AUTO {'HIT' if hit else 'MIX'}{' KYIV' if kyiv else ''} {title[:80]}")
 
         print(f"NEWS cycle sent={sent} raw={len(raw or [])} uniq={len(unique)}")
     except Exception as e:
