@@ -1133,6 +1133,14 @@ async def catch_emoji_id(message: Message):
         bits.append(f"{e.type} custom_emoji_id={cid} offset={e.offset}")
     if bits:
         await message.answer("\n".join(bits))
+
+@dp.message(Command("emoji"))
+async def cmd_emoji(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+    text = "⚡️ Перевірка паку ЧІТКО"
+    ents = news_entities(text)
+    await message.answer(text, entities=ents, parse_mode=None)
         
 async def main():
     print("Я заработал")
