@@ -413,6 +413,13 @@ def fetch_tg_channel_posts() -> list:
     LAST_TG_STATS["by_channel"] = {}
     LAST_TG_STATS["when"] = datetime.now().strftime("%H:%M")
 
+    extra_skip = (
+        "підписатися", "подписаться", "присылайте", "присилайте",
+        "надіслати новину", "карта загроз", "мапа загроз",
+        "live map", "онлайн-карта", "обстановка_kyiv",
+        "гучно на центр", "поки чисто", "ще пуски",
+    )
+
     order = [
         "lachentyt",
         "NovynaUKR",
@@ -433,7 +440,6 @@ def fetch_tg_channel_posts() -> list:
         meta = TG_SOURCES[username]
         kept = 0
         html = ""
-        messages = []
         try:
             html = requests.get(f"https://t.me/s/{username}", headers=headers, timeout=10).text
             if "tgme_widget_message" not in html:
@@ -492,6 +498,13 @@ def fetch_tg_channel_posts() -> list:
             if any(k in low for k in WAR_FILLER_KEYS):
                 LAST_TG_STATS["skipped"] += 1
                 continue
+            if any(k in low for k in extra_skip):
+                LAST_TG_STATS["skipped"] += 1
+                continue
+            if username == "k_dvizh" and any(k in low for k in ("летить", "курс на", "шахед на")):
+                if not any(k in low for k in ("влучан", "пожеж", "склад", "приліт", "руйнув", "загиб")):
+                    LAST_TG_STATS["skipped"] += 1
+                    continue
             local = any(k in low for k in CIVILIAN_KEYS)
             if not local and not meta.get("allow_national"):
                 LAST_TG_STATS["skipped"] += 1
