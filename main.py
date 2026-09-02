@@ -30,23 +30,26 @@ from aiogram.types import MessageEntity
 def u16(s: str) -> int:
     return len(s.encode("utf-16-le")) // 2
 
+def u16(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
 
 def news_entities(text: str) -> list:
     from aiogram.types import MessageEntity
 
     ents = []
-    bolt = "⚡️"
-    if text.startswith(bolt):
+    first = text.split("\n", 1)[0]
+    bolt = first.split(" ", 1)[0] if first else ""
+    if bolt:
         ents.append(MessageEntity(
             type="custom_emoji",
             offset=0,
             length=u16(bolt),
             custom_emoji_id="5237977689968651276",
         ))
-    first = text.split("\n", 1)[0]
-    title = first.replace("⚡️", "").strip()
-    t_at = first.find(title)
-    if t_at >= 0:
+    title = first[len(bolt):].strip() if bolt else first.strip()
+    t_at = first.find(title) if title else -1
+    if t_at >= 0 and title:
         ents.append(MessageEntity(
             type="bold",
             offset=u16(text[:t_at]),
@@ -1035,6 +1038,7 @@ async def scheduled_news():
         is_hit_story,
         fetch_and_score_news,
         WAR_FILLER_KEYS,
+        TRACKER_SKIP,
     )
 
     if NEWS_LOCK.get("on"):
@@ -1046,64 +1050,73 @@ async def scheduled_news():
         now = time.time()
         sent = 0
 
-        async def publish_one(items, tag):
-            nonlocal sent
-            for news in items:
-                if sent >= 1:
-                    return
-                score = float(news.get("final_score") or 0)
-                hit = is_hit_story(news)
-                if score < 60 and not hit:
-                    continue
-                blob = ((news.get("title") or "") + " " + (news.get("text") or "")).lower()
-                if any(x in blob for x in WAR_FILLER_KEYS) and not hit:
-                    continue
-                fp = news_fingerprint(news)
-                if any(is_same_story(fp, old) for old in LAST_PUB_TITLES):
-                    print(f"DEDUP mem: {fp[:80]}")
-                    continue
-                prepared = prepare_chitko_news(news)
-                if not prepared:
-                    continue
-                news = prepared
-                fp2 = news_fingerprint(news)
-                if any(is_same_story(fp2, old) for old in LAST_PUB_TITLES):
-                    print(f"DEDUP after rewrite: {fp2[:80]}")
-                    continue
-                formatted = format_news_post(news)
-                if not formatted or "⚡️" not in formatted:
-                    continue
-                if is_english_post(news, formatted):
-                    print("SEND skip ru/en")
-                    continue
-                breaking = is_breaking(news) or hit
-                if not breaking and now - LAST_AUTO_NEWS.get("at", 0) < 12 * 60:
-                    continue
-                await send_news_to_channel(news, formatted)
-                LAST_AUTO_NEWS["at"] = now
-                save_last_auto(now)
-                LAST_PUB_TITLES.append(fp2)
-                if len(LAST_PUB_TITLES) > 80:
-                    del LAST_PUB_TITLES[:-80]
-                published_ids.add(news["event_id"])
-                save_published_ids(published_ids)
-                recent = load_recent_titles()
-                recent.append(fp2)
-                save_recent_titles(recent)
-                sent += 1
-                print(f"{tag} sent {fp2[:80]}")
-                return
+        filtered = []
+        for item in raw or []:
+            title = (item.get("title") or item.get("title_chitko") or "").strip()
+            blob = " ".join([
+                title,
+                item.get("text") or "",
+                item.get("body") or "",
+            ]).lower()
+            if any(k in blob for k in WAR_FILLER_KEYS):
+                print(f"SKIP filler {title[:60]}")
+                continue
+            if any(k in blob for k in TRACKER_SKIP):
+                print(f"SKIP tracker {title[:60]}")
+                continue
+            filtered.append(item)
 
-        hits = [n for n in raw if is_hit_story(n)]
-        print(f"HIT queue {len(hits)}")
-        await publish_one(hits, "HIT")
-        if sent == 0:
-            mix = cluster_unique(pick_cycle_news(raw))
-            print(f"HIT empty fallback {len(mix)}")
-            await publish_one(mix, "MIX")
+        unique = cluster_unique(filtered)
+        hits = [n for n in unique if is_hit_story(n)]
+        mix = [n for n in unique if n not in hits]
+        queue = hits + mix
+        last_auto = float(LAST_AUTO_NEWS.get("at") or 0)
+
+        for item in queue:
+            if sent >= 2:
+                break
+            title = (item.get("title_chitko") or item.get("title") or "").strip()
+            if len(title) < 8:
+                continue
+
+            hit = is_hit_story(item)
+            if (not hit) and last_auto and now - last_auto < 12 * 60:
+                print("HOLD mix")
+                continue
+
+            fp_now = news_fingerprint(item)
+            if any(is_same_story(fp_now, old) for old in LAST_PUB_TITLES[-40:]):
+                print(f"DUP skip {fp_now[:80]}")
+                continue
+
+            try:
+                item = prepare_chitko_news(item)
+            except Exception as e:
+                print(f"REWRITE fail {e}")
+            formatted = format_news_post(item)
+            if not formatted or "⚡️" not in formatted:
+                continue
+
+            fp_fmt = news_fingerprint(item)
+            if any(is_same_story(fp_fmt, old) for old in LAST_PUB_TITLES[-40:]):
+                print(f"DUP skip after rewrite {fp_fmt[:80]}")
+                continue
+
+            await send_news_to_channel(item, formatted)
+            LAST_PUB_TITLES.append(fp_fmt)
+            if len(LAST_PUB_TITLES) > 80:
+                del LAST_PUB_TITLES[:-80]
+            LAST_AUTO_NEWS["at"] = now
+            save_last_auto(now)
+            sent += 1
+            print(f"AUTO {'HIT' if hit else 'MIX'} {title[:80]}")
+
+        print(f"NEWS cycle sent={sent} raw={len(raw or [])} uniq={len(unique)}")
+    except Exception as e:
+        print(f"NEWS cycle fail {e}")
     finally:
         NEWS_LOCK["on"] = False
-
+        
 @dp.message()
 async def catch_emoji_id(message: Message):
     if str(message.chat.id) != str(ADMIN_GROUP_ID):
