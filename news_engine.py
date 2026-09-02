@@ -1302,7 +1302,19 @@ def format_news_post(news: dict) -> str:
 
     body = re.sub(r"<[^>]+>", " ", body)
     body = re.sub(r"\s+", " ", body).strip()
-    body = re.sub(r"Підписатися на Times of Ukraine.*$", "", body, flags=re.I).strip()
+    junk = (
+        r"(Підписатися на Times of Ukraine|"
+        r"ПОДПИСАТЬСЯ|"
+        r"Підписатися|"
+        r"Присылайте контент|"
+        r"присилайте контент|"
+        r"@Obstanovka_kyiv_bot|"
+        r"Надіслати новину|"
+        r"карта загроз|"
+        r"Live map).*$"
+    )
+    body = re.sub(junk, "", body, flags=re.I).strip()
+    title = re.sub(junk, "", title, flags=re.I).strip()
 
     tnorm = re.sub(r"\W+", " ", title.lower()).strip()
     bnorm = re.sub(r"\W+", " ", body.lower()).strip()
@@ -1311,6 +1323,7 @@ def format_news_post(news: dict) -> str:
         body = re.sub(r"^\W+", "", body).strip()
 
     parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", body) if p.strip()]
+    parts = [p for p in parts if not re.search(r"підписат|подписат|присылай|присилай", p, re.I)]
     if not parts:
         body_block = ""
     elif len(parts) <= 3:
@@ -1318,6 +1331,9 @@ def format_news_post(news: dict) -> str:
     else:
         mid = max(2, (len(parts) + 1) // 2)
         body_block = " ".join(parts[:mid]) + "\n\n" + " ".join(parts[mid:])
+
+    if any(k in title.lower() for k in ("продаж", "дуплекс", "м²", "іпотек", "забудовник")):
+        return ""
 
     lines = [f"⚡️ {title}"]
     if body_block:
