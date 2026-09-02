@@ -709,8 +709,8 @@ async def scheduled_brief():
         return
     try:
         text = await create_morning_brief()
-        cover = _mark_path("cover_ranok.jpg")
-        if cover:
+        cover = os.path.join(os.path.dirname(__file__), "cover_ranok.jpg")
+        if os.path.exists(cover):
             await bot.send_photo(
                 CHANNEL_ID,
                 photo=FSInputFile(cover),
