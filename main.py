@@ -30,9 +30,6 @@ from aiogram.types import MessageEntity
 def u16(s: str) -> int:
     return len(s.encode("utf-16-le")) // 2
 
-def u16(s: str) -> int:
-    return len(s.encode("utf-16-le")) // 2
-
 
 def news_entities(text: str) -> list:
     from aiogram.types import MessageEntity
@@ -1027,6 +1024,14 @@ def cluster_unique(items: list) -> list:
 
 
 NEWS_LOCK = {"on": False}
+
+@dp.message(Command("emoji"))
+async def cmd_emoji(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+    text = "⚡️ Перевірка паку ЧІТКО"
+    ents = news_entities(text)
+    await message.answer(text, entities=ents, parse_mode=None)
 
 async def scheduled_news():
     import time
