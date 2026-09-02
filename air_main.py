@@ -10,7 +10,85 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from air_engine import process_air_cycle, format_air_post, fetch_official_alerts
 from air_monitor import detect_districts
-from aiogram.types import Message
+from aiogram.types import Message, MessageEntity
+
+
+def u16(s: str) -> int:
+    return len(s.encode("utf-16-le")) // 2
+
+
+CE = {
+    "siren": ("🚨", "5240038780349489613"),
+    "repeat": ("🔁", "5238053487551490162"),
+    "green": ("🟢", "5240321801514427483"),
+    "warn": ("⚠️", "5238203141391951812"),
+    "loud": ("⚠️", "5240501069154396615"),
+    "day": ("✅", "5240025208252833961"),
+    "night": ("🌙", "5240446544544572869"),
+    "bolt": ("⚡️", "5237977689968651276"),
+}
+
+
+def pack_entities(text: str, kind: str) -> list:
+    ents = []
+    first = text.split("\n", 1)[0]
+    end_line = u16(first)
+
+    def add(ch, eid, start_from=0, stop=None):
+        stop = len(text) if stop is None else stop
+        pos = 0
+        chunk = text
+        while True:
+            i = chunk.find(ch, pos)
+            if i < 0 or i >= stop:
+                break
+            off = u16(text[:i])
+            ents.append(MessageEntity(
+                type="custom_emoji",
+                offset=off,
+                length=u16(ch),
+                custom_emoji_id=eid,
+            ))
+            pos = i + len(ch)
+            if start_from:
+                break
+
+    if kind == "start":
+        add("🚨", CE["siren"][1], stop=end_line)
+    elif kind == "repeat":
+        add("🔁", CE["repeat"][1], stop=end_line)
+        add("🚨", CE["siren"][1], stop=end_line)
+    elif kind == "end":
+        add("🟢", CE["green"][1], stop=end_line)
+        add("✅", CE["day"][1])
+        add("🌙", CE["night"][1])
+    elif kind == "update":
+        add("⚠️", CE["warn"][1], stop=end_line)
+    elif kind == "course":
+        add("⚠️", CE["warn"][1], stop=end_line)
+    elif kind == "loud":
+        add("⚠️", CE["loud"][1], stop=end_line)
+
+    title = first
+    for a, b in (("🚨 ", ""), (" 🚨", ""), ("🔁", ""), ("⚠️ ", ""), (" ⚠️", ""), ("🟢 ", ""), (" 🟢", "")):
+        title = title.replace(a, b)
+    title = title.strip()
+    t_at = first.find(title)
+    if t_at >= 0:
+        ents.append(MessageEntity(
+            type="bold",
+            offset=u16(text[:t_at]),
+            length=u16(title),
+        ))
+    foot = "ЧІТКО"
+    f_at = text.rfind(foot)
+    if f_at >= 0:
+        ents.append(MessageEntity(
+            type="bold",
+            offset=u16(text[:f_at]),
+            length=u16(foot),
+        ))
+    return ents
 
 AIR_BOT_TOKEN = os.getenv("AIR_BOT_TOKEN") or os.getenv("BOT_TOKEN")
 
@@ -29,7 +107,6 @@ ADMIN_GROUP_ID = _chat(os.getenv("ADMIN_GROUP_ID"))
 
 bot = Bot(
     token=AIR_BOT_TOKEN,
-    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
 dp = Dispatcher()
 scheduler = AsyncIOScheduler(timezone="Europe/Kyiv")
@@ -77,7 +154,6 @@ def ua_kind(n: int, kind: str) -> str:
         word = many
     return f"{n}× {word}"
 
-
 def parse_course_line(raw: str) -> dict | None:
     text = re.sub(r"<[^>]+>", " ", raw or "")
     text = re.sub(r"\s+", " ", text).strip()
@@ -86,21 +162,24 @@ def parse_course_line(raw: str) -> dict | None:
         return None
     low = re.sub(r"підписатися.*", " ", low)
     low = re.sub(r"присылайте.*", " ", low)
-    low = re.sub(r"єрадар\s*\|\s*повітряна тривога[^а-яіїєґa-z]*", " ", low)
+    low = re.sub(r"надіслати новину.*", " ", low)
+    low = re.sub(r"слідкувати в онлайн.*", " ", low)
+    low = re.sub(r"єрадар\s*\|[^\n]*", " ", low)
+    low = re.sub(r"повітряна тривога\|?", " ", low)
+    low = re.sub(r"ракетна небезпека\|?", " ", low)
+    low = re.sub(r"\s+", " ", low).strip()
     if any(s in low for s in SKIP_LINE):
         return None
-    if any(x in low for x in ("відбій", "отбой", "не фіксується")):
+    if any(x in low for x in ("відбій", "отбой", "не фіксується", "відбоїв не буде")):
         return None
 
-    districts = detect_districts(text)
-    place = ", ".join(districts[:4]) if districts else "Київ"
+    districts = detect_districts(low) or detect_districts(text)
+    if not districts:
+        return None
+    place = ", ".join(districts[:4])
 
     if "гучно" in low:
         return {"fp": f"loud|{place.lower()}", "place": place, "kind": "LOUD", "n": 1, "src": ""}
-    if any(x in low for x in ("поки чисто", "наразі чисто", "поки тиша", "тиша над")):
-        return {"fp": "clear|kyiv", "place": "Київ", "kind": "CLEAR", "n": 1, "src": ""}
-    if "ще пуски" in low or "ще летить" in low:
-        return {"fp": "launch|kyiv", "place": "Київ", "kind": "LAUNCH", "n": 1, "src": ""}
 
     kind = None
     if any(x in low for x in ("циркон", "zircon")):
@@ -109,7 +188,7 @@ def parse_course_line(raw: str) -> dict | None:
         kind = "KALIBR"
     elif any(x in low for x in ("кінжал", "кинжал", "іскандер", "искандер")):
         kind = "BALLISTIC"
-    elif "баліст" in low and "ракетн небезпек" not in low:
+    elif "баліст" in low:
         kind = "BALLISTIC"
     elif any(x in low for x in ("крилат", "х-101", "x-101")):
         kind = "CRUISE"
@@ -119,94 +198,75 @@ def parse_course_line(raw: str) -> dict | None:
         "летить", "полетів",
     )):
         kind = "UAV"
-    elif districts:
-        kind = "UAV"
     else:
-        return None
+        kind = "UAV"
 
     n = 1
-    m = re.search(
-        r"(?:ще\s+)?([1-9]|1[0-2])\s*(?:x|х|×)?\s*"
-        r"(?:циркон|калібр|калибр|баліст|крилат|бпла|шахед|дрон|ціл|ракет)",
-        low,
-    )
+    m = re.search(r"(?:ще\s+)?([1-9]|1[0-2])\s*(?:x|х|×|реактив|шахед|бпла|дрон|ціл|ракет)", low)
     if m:
         n = int(m.group(1))
 
     fp = f"{place.lower()}|{kind}|{n}"
     return {"fp": fp, "place": place, "kind": kind, "n": n, "src": ""}
 
-
 def format_course(item: dict) -> str:
-    CE_WARN = '<tg-emoji emoji-id="5238203141391951812">⚠️</tg-emoji>'
-    CE_LOUD = '<tg-emoji emoji-id="5240501069154396615">⚠️</tg-emoji>'
-
     if item["kind"] == "LOUD":
         return (
-            f"{CE_LOUD} <b>Гучно</b> {CE_LOUD}\n\n"
+            f"⚠️ Гучно ⚠️\n\n"
             f"{item['place']}.\n"
             f"Пройдіть в укриття.\n\n"
-            f"<b>ЧІТКО</b>"
+            f"ЧІТКО"
         )
     if item["kind"] == "CLEAR":
         return (
-            f"{CE_WARN} <b>Курс</b> {CE_WARN}\n\n"
+            f"⚠️ Курс ⚠️\n\n"
             f"Поки чисто над Києвом.\n"
             f"Загроза ще не знята.\n\n"
-            f"<b>ЧІТКО</b>"
+            f"ЧІТКО"
         )
     if item["kind"] == "LAUNCH":
         return (
-            f"{CE_WARN} <b>Курс</b> {CE_WARN}\n\n"
+            f"⚠️ Курс ⚠️\n\n"
             f"Ще пуски.\n"
             f"Пройдіть в укриття.\n\n"
-            f"<b>ЧІТКО</b>"
+            f"ЧІТКО"
         )
     line = ua_kind(item.get("n") or 1, item["kind"])
     return (
-        f"{CE_WARN} <b>Курс</b> {CE_WARN}\n\n"
+        f"⚠️ Курс ⚠️\n\n"
         f"{line} — {item['place']}.\n"
         f"Пройдіть в укриття.\n\n"
-        f"<b>ЧІТКО</b>"
+        f"ЧІТКО"
     )
-
 
 def fetch_course_items() -> list:
     import requests
 
     headers = {"User-Agent": "Mozilla/5.0"}
-    primary = ("k_dvizh", "eradarrua")
     found = []
     seen_now = set()
-
-    def pull(usernames):
-        for username in usernames:
-            try:
-                html = requests.get(
-                    f"https://t.me/s/{username}",
-                    headers=headers,
-                    timeout=6,
-                ).text
-            except Exception as e:
-                print(f"AIR course {username} {e}")
+    for username in ("k_dvizh", "eradarrua", "kievreal1"):
+        try:
+            html = requests.get(
+                f"https://t.me/s/{username}",
+                headers=headers,
+                timeout=6,
+            ).text
+        except Exception as e:
+            print(f"AIR course {username} {e}")
+            continue
+        chunks = re.split(r'class="tgme_widget_message_text', html)
+        for chunk in chunks[1:10]:
+            item = parse_course_line(chunk)
+            if not item:
                 continue
-            chunks = re.split(r'class="tgme_widget_message_text', html)
-            for chunk in chunks[1:8]:
-                item = parse_course_line(chunk)
-                if not item:
-                    continue
-                if item["fp"] in seen_now:
-                    continue
-                seen_now.add(item["fp"])
-                item["src"] = username
-                found.append(item)
-                print(f"AIR take {item['fp']} via {username}")
-
-    pull(primary)
-    if not found:
-        pull(("kievreal1", "povitryanatrivogaaa"))
+            if item["fp"] in seen_now:
+                continue
+            seen_now.add(item["fp"])
+            item["src"] = username
+            found.append(item)
+            print(f"AIR take {item['fp']} via {username}")
     return found
-
 
 async def pin_last(msg_id):
     if not msg_id:
@@ -221,7 +281,6 @@ async def pin_last(msg_id):
         WAVE["pin_id"] = msg_id
     except Exception as e:
         print(f"AIR pin {e}")
-
 
 async def scheduled_siren():
     try:
@@ -262,8 +321,23 @@ async def scheduled_siren():
     text = format_air_post(data).strip()
     if len(text) < 20:
         return
+    raw_title = data.get("title") or ""
+    if "Повторна" in raw_title or et.startswith("ALERT_REPEAT"):
+        kind = "repeat"
+    elif et.startswith("ALERT_START"):
+        kind = "start"
+    elif et.startswith("ALERT_END"):
+        kind = "end"
+    else:
+        kind = "update"
+    ents = pack_entities(text, kind)
     try:
-        sent = await bot.send_message(CHANNEL_ID, text)
+        sent = await bot.send_message(
+            CHANNEL_ID,
+            text,
+            parse_mode=None,
+            entities=ents,
+        )
         if et.startswith("ALERT_END"):
             try:
                 await bot.unpin_all_chat_messages(chat_id=CHANNEL_ID)
@@ -273,7 +347,6 @@ async def scheduled_siren():
             await pin_last(sent.message_id)
     except Exception as e:
         print(f"AIR send siren {e}")
-
 
 async def scheduled_course():
     if WAVE.get("ended_at") and time.time() - WAVE["ended_at"] < 180:
@@ -292,8 +365,16 @@ async def scheduled_course():
             print(f"AIR skip fp {fp}")
             continue
         WAVE["seen"].add(fp)
+        text = format_course(item)
+        kind = "loud" if item["kind"] == "LOUD" else "course"
+        ents = pack_entities(text, kind)
         try:
-            sent = await bot.send_message(CHANNEL_ID, format_course(item))
+            sent = await bot.send_message(
+                CHANNEL_ID,
+                text,
+                parse_mode=None,
+                entities=ents,
+            )
             await pin_last(sent.message_id)
             print(f"AIR course {fp} via {item.get('src')}")
         except Exception as e:
