@@ -645,23 +645,40 @@ async def skip_one(callback: CallbackQuery):
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Пропущено")
 
+@dp.message(Command("status"))
+async def cmd_status(message: Message):
+    if message.chat.id != ADMIN_GROUP_ID:
+        return
+    from news_engine import LAST_TG_STATS
+
+    st = LAST_TG_STATS or {}
+    lines = [
+        "Статус ЧІТКО",
+        "",
+        f"Перевірено: {st.get('checked', 0)}",
+        f"Відсіяно: {st.get('skipped', 0)}",
+        f"Підійшло: {st.get('kept', 0)}",
+        f"Останній збір: {st.get('when') or 'ще не було'}",
+        "",
+        "По каналах:",
+    ]
+    by = st.get("by_channel") or {}
+    if not by:
+        lines.append("немає даних")
+    else:
+        for name, row in by.items():
+            lines.append(
+                f"{name}: html={row.get('html', 0)} "
+                f"chunk={row.get('chunks', 0)} kept={row.get('kept', 0)}"
+            )
+    await message.answer("\n".join(lines))
+
+
 @dp.message(Command("stats"))
 async def cmd_stats(message: Message):
     if message.chat.id != ADMIN_GROUP_ID:
         return
-    
-    published_count = len(published_ids)
-    pending_count = len(pending_news)
-    
-    text = (
-        f"<b>Статистика ЧІТКО</b>\n\n"
-        f"Опубликовано: <b>{published_count}</b>\n"
-        f"Сейчас на апруве: <b>{pending_count}</b>\n\n"
-        f"Порог авто: 75+\n"
-        f"Форс-мажор: 90+"
-    )
-    
-    await message.answer(text, parse_mode="HTML")
+    await cmd_status(message)
 
 # ======================
 # Запуск
