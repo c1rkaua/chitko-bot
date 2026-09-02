@@ -174,39 +174,50 @@ def parse_course_line(raw: str) -> dict | None:
     low = re.sub(r"\s+", " ", low).strip()
     if any(s in low for s in SKIP_LINE):
         return None
-    if any(x in low for x in ("відбій", "отбой", "не фіксується", "відбоїв не буде")):
+    if any(x in low for x in (
+        "відбій", "отбой", "видихає", "київ чисто",
+        "не фіксується", "відбоїв не буде",
+    )):
         return None
 
+    extra = (
+        ("лісник", "Лісники"),
+        ("літник", "Лісники"),
+        ("хотів", "Хотів"),
+        ("хотив", "Хотів"),
+        ("феофан", "Феофанія"),
+        ("петрівк", "Петрівка"),
+        ("республік", "ТРЦ Республіка"),
+    )
     districts = detect_districts(low) or detect_districts(text)
     if not districts:
+        for key, name in extra:
+            if key in low:
+                districts.append(name)
+    if not districts:
         return None
-    place = ", ".join(districts[:4])
+    place = ", ".join(list(dict.fromkeys(districts))[:4])
 
     if "гучно" in low:
         return {"fp": f"loud|{place.lower()}", "place": place, "kind": "LOUD", "n": 1, "src": ""}
 
-    kind = None
+    kind = "UAV"
     if any(x in low for x in ("циркон", "zircon")):
         kind = "ZIRCON"
     elif any(x in low for x in ("калібр", "калибр", "kalibr")):
         kind = "KALIBR"
-    elif any(x in low for x in ("кінжал", "кинжал", "іскандер", "искандер")):
-        kind = "BALLISTIC"
-    elif "баліст" in low:
+    elif any(x in low for x in ("кінжал", "кинжал", "іскандер", "искандер", "баліст")):
         kind = "BALLISTIC"
     elif any(x in low for x in ("крилат", "х-101", "x-101")):
         kind = "CRUISE"
-    elif any(x in low for x in (
-        "бпла", "шахед", "дрон", "безпілот",
-        "намотує", "кола", "реактив", "падає", "йде на",
-        "летить", "полетів",
-    )):
-        kind = "UAV"
-    else:
+    elif any(x in low for x in ("реактив",)):
         kind = "UAV"
 
     n = 1
-    m = re.search(r"(?:ще\s+)?([1-9]|1[0-2])\s*(?:x|х|×|реактив|шахед|бпла|дрон|ціл|ракет)", low)
+    m = re.search(
+        r"([1-9]|1[0-2])\s*(?:x|х|×|на\s+|реактив|шахед|бпла|дрон|ціл|ракет)",
+        low,
+    )
     if m:
         n = int(m.group(1))
 
@@ -245,8 +256,11 @@ def format_course(item: dict) -> str:
 
 def fetch_course_items() -> list:
     import requests
+    from datetime import datetime, timezone, timedelta
 
     headers = {"User-Agent": "Mozilla/5.0"}
+    max_age = timedelta(minutes=3)
+    now = datetime.now(timezone.utc)
     found = []
     seen_now = set()
     for username in ("k_dvizh", "eradarrua", "kievreal1"):
@@ -254,22 +268,38 @@ def fetch_course_items() -> list:
             html = requests.get(
                 f"https://t.me/s/{username}",
                 headers=headers,
-                timeout=6,
+                timeout=8,
             ).text
         except Exception as e:
             print(f"AIR course {username} {e}")
             continue
-        chunks = re.split(r'class="tgme_widget_message_text', html)
-        for chunk in chunks[1:10]:
-            item = parse_course_line(chunk)
+        chunks = re.findall(
+            r'class="tgme_widget_message[^"]*"(.*?)class="tgme_widget_message_footer',
+            html,
+            flags=re.I | re.S,
+        )
+        for raw in chunks[:8]:
+            dt_m = re.search(r'datetime="([^"]+)"', raw)
+            if not dt_m:
+                continue
+            try:
+                published = datetime.fromisoformat(dt_m.group(1).replace("Z", "+00:00"))
+                if published.tzinfo is None:
+                    published = published.replace(tzinfo=timezone.utc)
+                if now - published > max_age:
+                    continue
+            except Exception:
+                continue
+            item = parse_course_line(raw)
             if not item:
                 continue
+            item["src"] = username
             if item["fp"] in seen_now:
                 continue
             seen_now.add(item["fp"])
-            item["src"] = username
             found.append(item)
-            print(f"AIR take {item['fp']} via {username}")
+            print(f"AIR parse {username} {item['fp']}")
+    print(f"AIR course fetched {len(found)}")
     return found
 
 async def pin_last(msg_id):
@@ -385,6 +415,8 @@ async def scheduled_course():
     if not items:
         print("AIR course empty")
         return
+
+    last_sent = None
     for item in items:
         fp = item["fp"]
         if fp in WAVE["seen"]:
@@ -393,37 +425,24 @@ async def scheduled_course():
         WAVE["seen"].add(fp)
         text = format_course(item)
         text = re.sub(r"</?tg-emoji[^>]*>", "", text)
-        text = re.sub(r"</?b>", "", text)
+        text = text.replace("<b>", "").replace("</b>", "")
         kind = "loud" if item["kind"] == "LOUD" else "course"
-        ents = pack_entities(text, kind)
+        ents = pack_entities(text, kind) if "pack_entities" in globals() else None
         try:
-            sent = await bot.send_message(
-                CHANNEL_ID,
-                text,
-                parse_mode=None,
-                entities=ents,
-            )
-            await pin_last(sent.message_id)
+            kwargs = {"parse_mode": None}
+            if ents:
+                kwargs["entities"] = ents
+            sent = await bot.send_message(CHANNEL_ID, text, **kwargs)
+            last_sent = sent
             print(f"AIR course {fp} via {item.get('src')}")
         except Exception as e:
             print(f"AIR send course {e}")
-            
-@dp.message()
-async def catch_emoji_id(message: Message):
-    if str(message.chat.id) != str(ADMIN_GROUP_ID):
-        return
-    if message.text and message.text.startswith("/"):
-        return
-    bits = []
-    if message.sticker:
-        bits.append(f"sticker file_id={message.sticker.file_id}")
-        bits.append(f"custom_emoji_id={message.sticker.custom_emoji_id}")
-    ents = list(message.entities or []) + list(message.caption_entities or [])
-    for e in ents:
-        cid = getattr(e, "custom_emoji_id", None)
-        bits.append(f"{e.type} custom_emoji_id={cid} offset={e.offset}")
-    if bits:
-        await message.answer("\n".join(bits))
+
+    if last_sent:
+        try:
+            await pin_last(last_sent.message_id)
+        except Exception as e:
+            print(f"AIR pin course {e}")
 
 async def main():
     print("AIR bot up")

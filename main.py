@@ -1075,6 +1075,10 @@ async def scheduled_news():
         "вишгород", "бориспіл", "бориспіль", "погреб",
         "дврз", "тець", "тец-5", "мерседес",
     )
+    WORLD_SKIP = (
+        "іран", "иран", "гіперзвук", "гиперзвук", "ft:",
+        "reuters", "китай", "тайван", "трамп",
+    )
 
     def is_kyiv_item(news: dict) -> bool:
         blob = " ".join([
@@ -1084,6 +1088,13 @@ async def scheduled_news():
             news.get("body") or "",
         ]).lower()
         return any(k in blob for k in KYIV_MARK)
+
+    kyiv_alert = False
+    try:
+        from air_engine import fetch_official_alerts
+        kyiv_alert = bool((fetch_official_alerts() or {}).get("kyiv"))
+    except Exception as e:
+        print(f"NEWS alert check {e}")
 
     if NEWS_LOCK.get("on"):
         print("NEWS lock skip")
@@ -1108,6 +1119,12 @@ async def scheduled_news():
             if any(k in blob for k in TRACKER_SKIP):
                 print(f"SKIP tracker {title[:60]}")
                 continue
+            if any(k in blob for k in WORLD_SKIP):
+                print(f"SKIP world {title[:60]}")
+                continue
+            if kyiv_alert and (not is_hit_story(item)) and (not is_kyiv_item(item)):
+                print(f"SKIP during alert {title[:60]}")
+                continue
             filtered.append(item)
 
         unique = cluster_unique(filtered)
@@ -1119,10 +1136,6 @@ async def scheduled_news():
             if n not in kyiv_hits and n not in other_hits and n not in kyiv_mix
         ]
         queue = kyiv_hits + other_hits + kyiv_mix + other_mix
-        print(
-            f"QUEUE kyiv_hit={len(kyiv_hits)} hit={len(other_hits)} "
-            f"kyiv_mix={len(kyiv_mix)} mix={len(other_mix)}"
-        )
         last_auto = float(LAST_AUTO_NEWS.get("at") or 0)
 
         for item in queue:
@@ -1131,7 +1144,6 @@ async def scheduled_news():
             title = (item.get("title_chitko") or item.get("title") or "").strip()
             if len(title) < 8:
                 continue
-
             hit = is_hit_story(item)
             kyiv = is_kyiv_item(item)
             if (not hit) and last_auto and now - last_auto < 12 * 60:
@@ -1140,12 +1152,10 @@ async def scheduled_news():
             if hit and (not kyiv) and kyiv_hits and sent == 0:
                 print(f"HOLD non-kyiv hit {title[:60]}")
                 continue
-
             fp_now = news_fingerprint(item)
             if any(is_same_story(fp_now, old) for old in LAST_PUB_TITLES[-40:]):
                 print(f"DUP skip {fp_now[:80]}")
                 continue
-
             try:
                 item = prepare_chitko_news(item)
             except Exception as e:
@@ -1153,12 +1163,10 @@ async def scheduled_news():
             formatted = format_news_post(item)
             if not formatted or "⚡️" not in formatted:
                 continue
-
             fp_fmt = news_fingerprint(item)
             if any(is_same_story(fp_fmt, old) for old in LAST_PUB_TITLES[-40:]):
                 print(f"DUP skip after rewrite {fp_fmt[:80]}")
                 continue
-
             await send_news_to_channel(item, formatted)
             LAST_PUB_TITLES.append(fp_fmt)
             if len(LAST_PUB_TITLES) > 80:
@@ -1167,7 +1175,6 @@ async def scheduled_news():
             save_last_auto(now)
             sent += 1
             print(f"AUTO {'HIT' if hit else 'MIX'}{' KYIV' if kyiv else ''} {title[:80]}")
-
         print(f"NEWS cycle sent={sent} raw={len(raw or [])} uniq={len(unique)}")
     except Exception as e:
         print(f"NEWS cycle fail {e}")
