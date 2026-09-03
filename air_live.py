@@ -75,6 +75,46 @@ def _news_fp(text: str) -> str:
     words = re.findall(r"[а-яіїєґa-z0-9]+", text.lower())
     return " ".join(words[:12])
 
+def translate_uk(text: str) -> str:
+    import requests
+    low = text.lower()
+    if not re.search(r"[ыэъё]|ться\b|это\b|что\b|после\b|объект", low):
+        return text
+    key = (os.getenv("XAI_API_KEY") or os.getenv("OPENAI_API_KEY") or "").strip()
+    if not key:
+        print("NEWS live no translate key")
+        return text
+    url = "https://api.x.ai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if os.getenv("OPENAI_API_KEY") and not os.getenv("XAI_API_KEY"):
+        url = "https://api.openai.com/v1/chat/completions"
+    try:
+        r = requests.post(
+            url,
+            headers=headers,
+            json={
+                "model": "grok-3" if "x.ai" in url else "gpt-4o-mini",
+                "temperature": 0.2,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Переклади українською, стиль ЧІТКО. "
+                            "Коротко, по суті. Без російської. "
+                            "Не вигадуй фактів. Верни лише текст поста."
+                        ),
+                    },
+                    {"role": "user", "content": text[:1500]},
+                ],
+            },
+            timeout=12,
+        )
+        data = r.json()
+        out = data["choices"][0]["message"]["content"].strip()
+        return out or text
+    except Exception as e:
+        print(f"NEWS live translate {e}")
+        return text
 
 async def start_live(bot, channel_id, parse_course_line, format_course, pack_entities, wave):
     client = build_client()
@@ -139,17 +179,79 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
         SEEN_NEWS.add(fp)
         if len(SEEN_NEWS) > 200:
             SEEN_NEWS.clear()
-        title = text_in.split("\n")[0][:120]
-        body = "\n".join(text_in.split("\n")[1:]).strip()
+
+        uk = translate_uk(text_in)
+        lines = [x.strip() for x in uk.split("\n") if x.strip()]
+        if not lines:
+            return
+        title = re.sub(r"^[⚡️⚡❗!]+", "", lines[0]).strip()[:120]
+        body = "\n\n".join(lines[1:])[:700]
         post = f"⚡️ {title}"
         if body:
-            post += "\n\n" + body[:700]
+            post += "\n\n" + body
         post += "\n\nЧІТКО"
+
+        from aiogram.types import MessageEntity, BufferedInputFile
+        ents = None
+        if pack_entities:
+            ents = pack_entities(post, "news")
+        if not ents:
+            ents = [
+                MessageEntity(
+                    type="custom_emoji",
+                    offset=0,
+                    length=2,
+                    custom_emoji_id="5237977689968651276",
+                )
+            ]
+
+        media_bytes = None
+        media_name = "live.bin"
+        media_kind = None
         try:
-            await bot.send_message(channel_id, post)
-            print(f"NEWS live sent {_chat_name(event)} {title[:50]}")
+            msg = event.message
+            if msg.photo:
+                media_bytes = await msg.download_media(bytes)
+                media_name, media_kind = "live.jpg", "photo"
+            elif msg.video:
+                media_bytes = await msg.download_media(bytes)
+                media_name, media_kind = "live.mp4", "video"
+            elif getattr(msg, "document", None) and (msg.file.mime_type or "").startswith(("image/", "video/")):
+                media_bytes = await msg.download_media(bytes)
+                media_name = msg.file.name or "live.bin"
+                media_kind = "video" if "video" in (msg.file.mime_type or "") else "photo"
+        except Exception as e:
+            print(f"NEWS live media {e}")
+
+        cap = post[:1024]
+        try:
+            if media_kind == "photo" and media_bytes:
+                await bot.send_photo(
+                    channel_id,
+                    BufferedInputFile(media_bytes, media_name),
+                    caption=cap,
+                    parse_mode=None,
+                    caption_entities=ents,
+                )
+            elif media_kind == "video" and media_bytes:
+                await bot.send_video(
+                    channel_id,
+                    BufferedInputFile(media_bytes, media_name),
+                    caption=cap,
+                    parse_mode=None,
+                    caption_entities=ents,
+                )
+            else:
+                await bot.send_message(
+                    channel_id,
+                    post,
+                    parse_mode=None,
+                    entities=ents,
+                )
+            print(f"NEWS live sent {_chat_name(event)} {media_kind or 'text'} {title[:40]}")
         except Exception as e:
             print(f"NEWS live send {e}")
+            await bot.send_message(channel_id, post)
 
     await client.start()
     print("AIR live telethon up")
