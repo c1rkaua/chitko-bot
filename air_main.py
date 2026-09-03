@@ -300,7 +300,7 @@ def fetch_course_items() -> list:
     from datetime import datetime, timezone, timedelta
 
     headers = {"User-Agent": "Mozilla/5.0"}
-    max_age = timedelta(minutes=12)
+    max_age = timedelta(minutes=4)
     now = datetime.now(timezone.utc)
     found = []
     seen_now = set()
@@ -323,16 +323,18 @@ def fetch_course_items() -> list:
         parsed = 0
         for raw in chunks[:15]:
             dt_m = re.search(r'datetime="([^"]+)"', raw)
-            if dt_m:
-                try:
-                    published = datetime.fromisoformat(dt_m.group(1).replace("Z", "+00:00"))
-                    if published.tzinfo is None:
-                        published = published.replace(tzinfo=timezone.utc)
-                    if now - published > max_age:
-                        aged += 1
-                        continue
-                except Exception:
-                    pass
+            if not dt_m:
+                continue
+            try:
+                published = datetime.fromisoformat(dt_m.group(1).replace("Z", "+00:00"))
+                if published.tzinfo is None:
+                    published = published.replace(tzinfo=timezone.utc)
+                age = now - published
+                if age > max_age or age.total_seconds() < 0:
+                    aged += 1
+                    continue
+            except Exception:
+                continue
             item = parse_course_line(raw)
             if not item:
                 continue
@@ -342,7 +344,7 @@ def fetch_course_items() -> list:
                 continue
             seen_now.add(item["fp"])
             found.append(item)
-            print(f"AIR parse {username} {item['fp']}")
+            print(f"AIR parse {username} {item['fp']} age={int(age.total_seconds())}s")
         print(f"AIR scan {username} chunks={len(chunks)} aged={aged} parsed={parsed}")
     print(f"AIR course fetched {len(found)}")
     return found
