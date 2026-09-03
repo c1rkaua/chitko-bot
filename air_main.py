@@ -174,7 +174,6 @@ def parse_course_line(raw: str) -> dict | None:
     low = re.sub(r"підписатися.*", " ", low)
     low = re.sub(r"присылайте.*", " ", low)
     low = re.sub(r"надіслати новину.*", " ", low)
-    low = re.sub(r"слідкувати в онлайн.*", " ", low)
     low = re.sub(r"єрадар\s*\|[^\n]*", " ", low)
     low = re.sub(r"повітряна тривога\|?", " ", low)
     low = re.sub(r"ракетна небезпека\|?", " ", low)
@@ -185,12 +184,12 @@ def parse_course_line(raw: str) -> dict | None:
         "відбій", "отбой", "видихає", "київ чисто",
         "не фіксується", "відбоїв не буде",
         "вінниччин", "житомирщин", "чернігівщин",
+        "дніпропетров", "харківщин", "сумщин",
     )):
         return None
 
     extra = (
         ("лісник", "Лісники"),
-        ("літник", "Лісники"),
         ("хотів", "Хотів"),
         ("хотив", "Хотів"),
         ("феофан", "Феофанія"),
@@ -201,7 +200,30 @@ def parse_course_line(raw: str) -> dict | None:
         ("мишолов", "Мишоловка"),
         ("харківськ", "Харківський масив"),
         ("відрадн", "Відрадний"),
-        ("республік", "ТРЦ Республіка"),
+        ("бориспіль", "Бориспіль"),
+        ("бориспіл", "Бориспіль"),
+        ("бровар", "Бровари"),
+        ("вишнев", "Вишневе"),
+        ("гостомел", "Гостомель"),
+        ("чайк", "Чайки"),
+        ("коцюбин", "Коцюбинське"),
+        ("димер", "Димер"),
+        ("ірпін", "Ірпінь"),
+        ("ірпен", "Ірпінь"),
+        ("нивк", "Нивки"),
+        ("оболон", "Оболонь"),
+        ("шуляв", "Шулявка"),
+        ("дарниц", "Дарниця"),
+        ("троєщин", "Троєщина"),
+        ("троещин", "Троєщина"),
+        ("святошин", "Святошин"),
+        ("позняк", "Позняки"),
+        ("осокорк", "Осокорки"),
+        ("борщаг", "Борщагівка"),
+        ("солом", "Солом'янка"),
+        ("виногр", "Виноградар"),
+        ("лук", "Лук'янівка"),
+        ("центр", "центр"),
     )
     districts = detect_districts(low) or detect_districts(text)
     if not districts:
@@ -210,7 +232,7 @@ def parse_course_line(raw: str) -> dict | None:
                 districts.append(name)
     if not districts:
         return None
-    place = ", ".join(list(dict.fromkeys(districts))[:4])
+    place = ", ".join(list(dict.fromkeys(districts))[:3])
 
     if "гучно" in low:
         return {"fp": f"loud|{place.lower()}", "place": place, "kind": "LOUD", "n": 1, "src": ""}
@@ -224,12 +246,19 @@ def parse_course_line(raw: str) -> dict | None:
         kind = "BALLISTIC"
     elif any(x in low for x in ("крилат", "х-101", "x-101")):
         kind = "CRUISE"
+    elif "реактив" in low:
+        kind = "UAV"
 
     n = 1
     m = re.search(
-        r"([1-9]|1[0-2])\s*(?:x|х|×|на\s+|реактив|шахед|бпла|дрон|ціл|ракет)",
+        r"(?:на\s+[а-яіїєґ''\-\s]{3,20}\s+|:\s*)([1-9]|1[0-2])\b",
         low,
     )
+    if not m:
+        m = re.search(
+            r"\b([1-9]|1[0-2])\s*(?:x|х|×|на\s+|реактив|шахед|бпла|дрон|ціл)",
+            low,
+        )
     if m:
         n = int(m.group(1))
 
@@ -271,16 +300,16 @@ def fetch_course_items() -> list:
     from datetime import datetime, timezone, timedelta
 
     headers = {"User-Agent": "Mozilla/5.0"}
-    max_age = timedelta(minutes=4)
+    max_age = timedelta(minutes=3)
     now = datetime.now(timezone.utc)
     found = []
     seen_now = set()
-    for username in ("k_dvizh", "eradarrua", "kievreal1", "war_monitor"):
+    for username in ("eradarrua", "k_dvizh", "war_monitor", "kievreal1"):
         try:
             html = requests.get(
                 f"https://t.me/s/{username}",
                 headers=headers,
-                timeout=8,
+                timeout=6,
             ).text
         except Exception as e:
             print(f"AIR course {username} {e}")
@@ -290,7 +319,7 @@ def fetch_course_items() -> list:
             html,
             flags=re.I | re.S,
         )
-        for raw in chunks[:10]:
+        for raw in chunks[:12]:
             dt_m = re.search(r'datetime="([^"]+)"', raw)
             if not dt_m:
                 continue
@@ -408,7 +437,7 @@ async def scheduled_siren():
             print(f"AIR send siren fallback {e2}")
 
 async def scheduled_course():
-    if WAVE.get("ended_at") and time.time() - WAVE["ended_at"] < 180:
+    if WAVE.get("ended_at") and time.time() - WAVE["ended_at"] < 90:
         print("AIR course hold after all-clear")
         return
 
