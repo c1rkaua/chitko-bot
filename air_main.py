@@ -300,7 +300,7 @@ def fetch_course_items() -> list:
     from datetime import datetime, timezone, timedelta
 
     headers = {"User-Agent": "Mozilla/5.0"}
-    max_age = timedelta(minutes=3)
+    max_age = timedelta(minutes=12)
     now = datetime.now(timezone.utc)
     found = []
     seen_now = set()
@@ -309,7 +309,7 @@ def fetch_course_items() -> list:
             html = requests.get(
                 f"https://t.me/s/{username}",
                 headers=headers,
-                timeout=6,
+                timeout=8,
             ).text
         except Exception as e:
             print(f"AIR course {username} {e}")
@@ -319,27 +319,31 @@ def fetch_course_items() -> list:
             html,
             flags=re.I | re.S,
         )
-        for raw in chunks[:12]:
+        aged = 0
+        parsed = 0
+        for raw in chunks[:15]:
             dt_m = re.search(r'datetime="([^"]+)"', raw)
-            if not dt_m:
-                continue
-            try:
-                published = datetime.fromisoformat(dt_m.group(1).replace("Z", "+00:00"))
-                if published.tzinfo is None:
-                    published = published.replace(tzinfo=timezone.utc)
-                if now - published > max_age:
-                    continue
-            except Exception:
-                continue
+            if dt_m:
+                try:
+                    published = datetime.fromisoformat(dt_m.group(1).replace("Z", "+00:00"))
+                    if published.tzinfo is None:
+                        published = published.replace(tzinfo=timezone.utc)
+                    if now - published > max_age:
+                        aged += 1
+                        continue
+                except Exception:
+                    pass
             item = parse_course_line(raw)
             if not item:
                 continue
+            parsed += 1
             item["src"] = username
             if item["fp"] in seen_now:
                 continue
             seen_now.add(item["fp"])
             found.append(item)
             print(f"AIR parse {username} {item['fp']}")
+        print(f"AIR scan {username} chunks={len(chunks)} aged={aged} parsed={parsed}")
     print(f"AIR course fetched {len(found)}")
     return found
 
