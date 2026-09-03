@@ -581,6 +581,17 @@ async def main():
     scheduler.add_job(scheduled_siren, "interval", seconds=10, misfire_grace_time=30)
     scheduler.add_job(scheduled_course, "interval", seconds=8, misfire_grace_time=20)
     scheduler.start()
+    from air_live import start_live
+    asyncio.create_task(
+        start_live(
+            bot,
+            CHANNEL_ID,
+            parse_course_line,
+            format_course,
+            pack_entities if "pack_entities" in globals() else None,
+            WAVE,
+        )
+    )
     await dp.start_polling(bot)
 
 
