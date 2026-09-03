@@ -425,6 +425,7 @@ def fetch_tg_channel_posts() -> list:
     import re
     import requests
     from datetime import datetime, timezone, timedelta
+    from zoneinfo import ZoneInfo
 
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
     max_age = timedelta(hours=1)
@@ -434,7 +435,7 @@ def fetch_tg_channel_posts() -> list:
     LAST_TG_STATS["skipped"] = 0
     LAST_TG_STATS["kept"] = 0
     LAST_TG_STATS["by_channel"] = {}
-    LAST_TG_STATS["when"] = datetime.now().strftime("%H:%M")
+    LAST_TG_STATS["when"] = datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%H:%M")
 
     extra_skip = (
         "підписатися", "подписаться", "присылайте", "присилайте",

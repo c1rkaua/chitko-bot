@@ -165,105 +165,129 @@ def ua_kind(n: int, kind: str) -> str:
         word = many
     return f"{n}× {word}"
 
-def parse_course_line(raw: str) -> dict | None:
-    text = re.sub(r"<[^>]+>", " ", raw or "")
-    text = re.sub(r"\s+", " ", text).strip()
-    low = text.lower()
-    if len(low) < 3:
-        return None
-    low = re.sub(r"підписатися.*", " ", low)
-    low = re.sub(r"присылайте.*", " ", low)
-    low = re.sub(r"надіслати новину.*", " ", low)
-    low = re.sub(r"єрадар\s*\|[^\n]*", " ", low)
-    low = re.sub(r"повітряна тривога\|?", " ", low)
-    low = re.sub(r"ракетна небезпека\|?", " ", low)
-    low = re.sub(r"\s+", " ", low).strip()
-    if any(s in low for s in SKIP_LINE):
-        return None
-    if any(x in low for x in (
-        "відбій", "отбой", "видихає", "київ чисто",
-        "не фіксується", "відбоїв не буде",
-        "вінниччин", "житомирщин", "чернігівщин",
-        "дніпропетров", "харківщин", "сумщин",
-    )):
-        return None
+def parse_course_line(raw: str) -> list:
+    text = re.sub(r"<[^>]+>", "\n", raw or "")
+    text = re.sub(r"&[a-z]+;", " ", text)
+    text = re.sub(r"підписатися.*", " ", text, flags=re.I)
+    lines = [re.sub(r"\s+", " ", x).strip() for x in text.split("\n")]
+    lines = [x for x in lines if x and len(x) > 1]
+    blob = " ".join(lines).lower()
+    if any(s in blob for s in SKIP_LINE):
+        return []
+    if any(x in blob for x in (
+        "відбій", "отбой", "видихає",
+        "вінниччин", "житомирщин", "дніпропетров",
+        "харківщин", "сумщин", "волин",
+    )) and "київ" not in blob and "киев" not in blob:
+        return []
 
     extra = (
-        ("лісник", "Лісники"),
-        ("хотів", "Хотів"),
-        ("хотив", "Хотів"),
-        ("феофан", "Феофанія"),
-        ("петрівк", "Петрівка"),
-        ("петрівц", "Петрівці"),
-        ("почайн", "Почайна"),
-        ("воскресен", "Воскресенка"),
-        ("мишолов", "Мишоловка"),
-        ("харківськ", "Харківський масив"),
-        ("відрадн", "Відрадний"),
-        ("бориспіль", "Бориспіль"),
-        ("бориспіл", "Бориспіль"),
-        ("бровар", "Бровари"),
-        ("вишнев", "Вишневе"),
-        ("гостомел", "Гостомель"),
-        ("чайк", "Чайки"),
-        ("коцюбин", "Коцюбинське"),
+        ("теремк", "Теремки"),
+        ("боярк", "Боярка"),
+        ("обухов", "Обухів"),
+        ("обухів", "Обухів"),
+        ("крюківщин", "Крюківщина"),
+        ("крюковщин", "Крюківщина"),
+        ("білогород", "Білогородка"),
+        ("белогород", "Білогородка"),
         ("димер", "Димер"),
+        ("лютіж", "Лютіж"),
+        ("лютеж", "Лютіж"),
+        ("підгірц", "Підгірці"),
+        ("подгірц", "Підгірці"),
         ("ірпін", "Ірпінь"),
         ("ірпен", "Ірпінь"),
-        ("нивк", "Нивки"),
-        ("оболон", "Оболонь"),
-        ("шуляв", "Шулявка"),
-        ("дарниц", "Дарниця"),
-        ("троєщин", "Троєщина"),
-        ("троещин", "Троєщина"),
-        ("святошин", "Святошин"),
-        ("позняк", "Позняки"),
-        ("осокорк", "Осокорки"),
-        ("борщаг", "Борщагівка"),
-        ("солом", "Солом'янка"),
-        ("виногр", "Виноградар"),
-        ("лук", "Лук'янівка"),
-        ("центр", "центр"),
+        ("гостомел", "Гостомель"),
+        ("фастів", "Фастів"),
     )
-    districts = detect_districts(low) or detect_districts(text)
-    if not districts:
+
+    def places_in(s: str) -> list:
+        low = s.lower()
+        found = detect_districts(low) or detect_districts(s)
         for key, name in extra:
-            if key in low:
-                districts.append(name)
-    if not districts:
-        return None
-    place = ", ".join(list(dict.fromkeys(districts))[:3])
+            if key in low and name not in found:
+                found.append(name)
+        out = []
+        for p in found:
+            if p not in out:
+                out.append(p)
+        return out[:3]
 
-    if "гучно" in low:
-        return {"fp": f"loud|{place.lower()}", "place": place, "kind": "LOUD", "n": 1, "src": ""}
+    def kind_of(s: str) -> str:
+        low = s.lower()
+        if "гучно" in low:
+            return "LOUD"
+        if any(x in low for x in ("циркон", "zircon")):
+            return "ZIRCON"
+        if any(x in low for x in ("кінжал", "кинжал", "іскандер", "баліст")):
+            return "BALLISTIC"
+        if any(x in low for x in ("калібр", "калибр")):
+            return "KALIBR"
+        if "реактив" in low:
+            return "UAV"
+        return "UAV"
 
-    kind = "UAV"
-    if any(x in low for x in ("циркон", "zircon")):
-        kind = "ZIRCON"
-    elif any(x in low for x in ("калібр", "калибр", "kalibr")):
-        kind = "KALIBR"
-    elif any(x in low for x in ("кінжал", "кинжал", "іскандер", "искандер", "баліст")):
-        kind = "BALLISTIC"
-    elif any(x in low for x in ("крилат", "х-101", "x-101")):
-        kind = "CRUISE"
-    elif "реактив" in low:
-        kind = "UAV"
-
-    n = 1
-    m = re.search(
-        r"(?:на\s+[а-яіїєґ''\-\s]{3,20}\s+|:\s*)([1-9]|1[0-2])\b",
-        low,
+    items = []
+    seen = set()
+    pat = re.compile(
+        r"([1-9]|1[0-2])\s*[xх×]\s*(?:реактив\w*\s+)?"
+        r"(?:від\s+[^,\n]+?\s+на\s+)?"
+        r"([^,\n/]+)",
+        flags=re.I,
     )
-    if not m:
-        m = re.search(
-            r"\b([1-9]|1[0-2])\s*(?:x|х|×|на\s+|реактив|шахед|бпла|дрон|ціл)",
-            low,
-        )
-    if m:
-        n = int(m.group(1))
-
-    fp = f"{place.lower()}|{kind}|{n}"
-    return {"fp": fp, "place": place, "kind": kind, "n": n, "src": ""}
+    for line in lines:
+        low = line.lower()
+        if "київщина" in low and ":" in line and len(line) < 18:
+            continue
+        if "інші без змін" in low:
+            continue
+        hits = list(pat.finditer(line))
+        if hits:
+            for m in hits:
+                n = int(m.group(1))
+                chunk = m.group(2)
+                dest = re.split(r"\s+на\s+", chunk, maxsplit=1)
+                piece = dest[-1]
+                pls = places_in(piece) or places_in(line)
+                if not pls:
+                    continue
+                kind = kind_of(line)
+                for place in pls[:2]:
+                    fp = f"{place.lower()}|{kind}|{n}"
+                    if fp in seen:
+                        continue
+                    seen.add(fp)
+                    items.append({
+                        "fp": fp,
+                        "place": place,
+                        "kind": kind,
+                        "n": n,
+                        "src": "",
+                    })
+            continue
+        pls = places_in(line)
+        if not pls:
+            continue
+        if len(line) > 180:
+            continue
+        n = 1
+        nm = re.search(r"\b([1-9]|1[0-2])\b", low)
+        if nm:
+            n = int(nm.group(1))
+        kind = kind_of(line)
+        for place in pls[:1]:
+            fp = f"{place.lower()}|{kind}|{n}"
+            if fp in seen:
+                continue
+            seen.add(fp)
+            items.append({
+                "fp": fp,
+                "place": place,
+                "kind": kind,
+                "n": n,
+                "src": "",
+            })
+    return items
 
 def format_course(item: dict) -> str:
     if item["kind"] == "LOUD":
@@ -304,7 +328,7 @@ def fetch_course_items() -> list:
     now = datetime.now(timezone.utc)
     found = []
     seen_now = set()
-    for username in ("eradarrua", "k_dvizh", "war_monitor", "kievreal1"):
+    for username in ("war_monitor", "eradarrua", "k_dvizh", "kievreal1"):
         try:
             html = requests.get(
                 f"https://t.me/s/{username}",
@@ -335,16 +359,14 @@ def fetch_course_items() -> list:
                     continue
             except Exception:
                 continue
-            item = parse_course_line(raw)
-            if not item:
-                continue
-            parsed += 1
-            item["src"] = username
-            if item["fp"] in seen_now:
-                continue
-            seen_now.add(item["fp"])
-            found.append(item)
-            print(f"AIR parse {username} {item['fp']} age={int(age.total_seconds())}s")
+            for item in parse_course_line(raw):
+                parsed += 1
+                item["src"] = username
+                if item["fp"] in seen_now:
+                    continue
+                seen_now.add(item["fp"])
+                found.append(item)
+                print(f"AIR parse {username} {item['fp']} age={int(age.total_seconds())}s")
         print(f"AIR scan {username} chunks={len(chunks)} aged={aged} parsed={parsed}")
     print(f"AIR course fetched {len(found)}")
     return found
