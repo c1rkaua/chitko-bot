@@ -28,11 +28,18 @@ NEWS_CHATS = (
 
 NEWS_SKIP = (
     "підписатися", "подписаться", "присылайте", "присилайте",
-    "надіслати новину", "карта загроз", "мапа загроз",
+    "прислать контент", "прислати контент",
+    "надіслати новину", "надіслати контент",
+    "надішли близьким", "надішліть близьким",
+    "карта загроз", "мапа загроз",
     "#реклама", "реклама", "aliexpress", "ваканс",
+    "insider ua", "инсайдер юа",
+    "будь в курсі", "будь в курсе",
+    "куди летить?", "куди летить",
+    "vasylkiv_info",
+    "підпишись", "подпишись",
+    "тільки оперативна інформація",
 )
-
-NEWS_EMOJI_ID = "5237977689968651276"
 
 HIT_KEYS = (
     "приліт", "прилет", "влучан", "уламк", "склад",
@@ -80,46 +87,68 @@ def _news_fp(text: str) -> str:
     words = re.findall(r"[а-яіїєґa-z0-9]+", text.lower())
     return " ".join(words[:12])
 
+
+def strip_ads(text: str) -> str:
+    text = re.sub(
+        r"(?im)^.*(insider\s*ua|прислать контент|прислати контент|"
+        r"надіслати новину|надіслати контент|киевский движ|"
+        r"київський движ|підписатися|подписаться|"
+        r"надішли близьким|vasylkiv_info).*$",
+        "",
+        text,
+    )
+    text = re.sub(r"(?i)insider\s*ua\s*\|?\s*", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text
+
+
 def translate_uk(text: str) -> str:
     import requests
-    low = text.lower()
-    if not re.search(r"[ыэъё]|ться\b|это\b|что\b|после\b|объект", low):
-        return text
+    text = strip_ads(text)
     key = (os.getenv("XAI_API_KEY") or os.getenv("OPENAI_API_KEY") or "").strip()
     if not key:
         print("NEWS live no translate key")
         return text
     url = "https://api.x.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    model = "grok-3"
     if os.getenv("OPENAI_API_KEY") and not os.getenv("XAI_API_KEY"):
         url = "https://api.openai.com/v1/chat/completions"
+        model = "gpt-4o-mini"
     try:
         r = requests.post(
             url,
             headers=headers,
             json={
-                "model": "grok-3" if "x.ai" in url else "gpt-4o-mini",
+                "model": model,
                 "temperature": 0.2,
                 "messages": [
                     {
                         "role": "system",
                         "content": (
-                            "Переклади українською, стиль ЧІТКО. "
-                            "Коротко, по суті. Без російської. "
-                            "Не вигадуй фактів. Верни лише текст поста."
+                            "Ти редактор каналу ЧІТКО.\n"
+                            "Перепиши пост українською своїми словами.\n"
+                            "Цифри й факти не змінюй і не вигадуй.\n"
+                            "Викинь футери: INSIDER UA, Прислать контент, "
+                            "Киевский Движ, Надіслати новину, підписатися, посилання t.me.\n"
+                            "Не пиши «пишуть пабліки», «за даними».\n"
+                            "Перший рядок — заголовок.\n"
+                            "Далі 2–5 речень.\n"
+                            "Лише українська. Верни тільки текст поста."
                         ),
                     },
                     {"role": "user", "content": text[:1500]},
                 ],
             },
-            timeout=12,
+            timeout=15,
         )
-        data = r.json()
-        out = data["choices"][0]["message"]["content"].strip()
-        return out or text
+        out = (r.json()["choices"][0]["message"]["content"] or "").strip()
+        print("NEWS live rewrite ok" if out else "NEWS live rewrite empty")
+        return strip_ads(out or text)
     except Exception as e:
         print(f"NEWS live translate {e}")
         return text
+
 
 async def start_live(bot, channel_id, parse_course_line, format_course, pack_entities, wave):
     client = build_client()
@@ -164,12 +193,15 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
 
     @client.on(events.NewMessage(chats=list(NEWS_CHATS)))
     async def on_news(event):
-        text_in = (event.raw_text or "").strip()
+        text_in = strip_ads((event.raw_text or "").strip())
         if len(text_in) < 25:
             return
         low = text_in.lower()
         if any(s in low for s in NEWS_SKIP):
             print(f"NEWS live skip ad {_chat_name(event)}")
+            return
+        if "t.me/" in low or "https://" in low:
+            print(f"NEWS live skip link {_chat_name(event)}")
             return
         if wave.get("kyiv") and not _is_hit(text_in):
             print(f"NEWS live silence {_chat_name(event)}")
@@ -206,7 +238,7 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
                     type="custom_emoji",
                     offset=0,
                     length=2,
-                    custom_emoji_id="5237977689968651276",
+                    custom_emoji_id=NEWS_EMOJI_ID,
                 )
             ]
 
