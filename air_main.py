@@ -28,30 +28,31 @@ CE = {
     "bolt": ("⚡️", "5237977689968651276"),
 }
 
-
 def pack_entities(text: str, kind: str) -> list:
     ents = []
     first = text.split("\n", 1)[0]
     end_line = u16(first)
 
-    def add(ch, eid, start_from=0, stop=None):
+    def add(ch, eid, stop=None):
         stop = len(text) if stop is None else stop
-        pos = 0
-        chunk = text
-        while True:
-            i = chunk.find(ch, pos)
-            if i < 0 or i >= stop:
-                break
-            off = u16(text[:i])
-            ents.append(MessageEntity(
-                type="custom_emoji",
-                offset=off,
-                length=u16(ch),
-                custom_emoji_id=eid,
-            ))
-            pos = i + len(ch)
-            if start_from:
-                break
+        variants = [ch]
+        if ch == "⚠️":
+            variants = ["⚠️", "⚠"]
+        if ch == "⚡️":
+            variants = ["⚡️", "⚡"]
+        for token in variants:
+            pos = 0
+            while True:
+                i = text.find(token, pos)
+                if i < 0 or i >= stop:
+                    break
+                ents.append(MessageEntity(
+                    type="custom_emoji",
+                    offset=u16(text[:i]),
+                    length=u16(token),
+                    custom_emoji_id=eid,
+                ))
+                pos = i + len(token)
 
     if kind == "start":
         add("🚨", CE["siren"][1], stop=end_line)
@@ -68,13 +69,15 @@ def pack_entities(text: str, kind: str) -> list:
         add("⚠️", CE["warn"][1], stop=end_line)
     elif kind == "loud":
         add("⚠️", CE["loud"][1], stop=end_line)
+    elif kind == "news":
+        add("⚡️", CE["bolt"][1], stop=end_line)
 
     title = first
-    for a, b in (("🚨 ", ""), (" 🚨", ""), ("🔁", ""), ("⚠️ ", ""), (" ⚠️", ""), ("🟢 ", ""), (" 🟢", "")):
-        title = title.replace(a, b)
+    for a in ("🚨 ", " 🚨", "🔁", "⚠️ ", "⚠ ", " ⚠️", " ⚠", "🟢 ", " 🟢", "⚡️ ", "⚡ "):
+        title = title.replace(a, "")
     title = title.strip()
     t_at = first.find(title)
-    if t_at >= 0:
+    if t_at >= 0 and title:
         ents.append(MessageEntity(
             type="bold",
             offset=u16(text[:t_at]),
