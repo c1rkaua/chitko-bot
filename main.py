@@ -1071,17 +1071,46 @@ async def scheduled_news():
         "позняк", "осокорк", "нивк", "шуляв", "березняк",
         "вишнев", "бровар", "ірпін", "ірпен", "буча",
         "вишгород", "бориспіл", "бориспіль", "погреб",
-        "дврз", "тець", "тец-5", "мерседес",
+        "дврз", "тець", "тец-5",
+    )
+    UA_HIT = (
+        "приліт", "прилет", "влучан", "уламк", "склад",
+        "пожеж", "загиб", "поран", "атб", "аврора",
+        "нова пошт", "епіцентр",
+    )
+    COSMOS = (
+        "загиб", "поран", "склад", "тцк", "бусиф",
+        "дтп", "аварі", "приліт", "влучан", "вибух",
     )
 
-    def is_kyiv_item(news: dict) -> bool:
-        blob = " ".join([
+    def blob_of(news: dict) -> str:
+        return " ".join([
             news.get("title") or "",
             news.get("title_chitko") or "",
             news.get("text") or "",
             news.get("body") or "",
         ]).lower()
-        return any(k in blob for k in KYIV_MARK)
+
+    def is_kyiv_item(news: dict) -> bool:
+        return any(k in blob_of(news) for k in KYIV_MARK)
+
+    def has_media(news: dict) -> bool:
+        urls = news.get("media_urls") or []
+        return bool(
+            news.get("video_url")
+            or news.get("image_url")
+            or urls
+        )
+
+    def is_cosmos(news: dict) -> bool:
+        b = blob_of(news)
+        if any(k in b for k in TRACKER_SKIP):
+            return False
+        if any(k in b for k in WAR_FILLER_KEYS):
+            return False
+        if not is_hit_story(news) and not any(k in b for k in COSMOS):
+            return False
+        return has_media(news) or any(k in b for k in ("загиб", "поран", "склад", "тцк"))
 
     kyiv_alert = False
     try:
@@ -1098,50 +1127,36 @@ async def scheduled_news():
         raw = fetch_and_score_news(40)
         now = time.time()
         sent = 0
+        last_auto = float(LAST_AUTO_NEWS.get("at") or 0)
 
         filtered = []
         for item in raw or []:
             title = (item.get("title") or item.get("title_chitko") or "").strip()
-            blob = " ".join([
-                title,
-                item.get("text") or "",
-                item.get("body") or "",
-            ]).lower()
-            if any(k in blob for k in WAR_FILLER_KEYS):
+            b = blob_of(item)
+            if any(k in b for k in WAR_FILLER_KEYS + TRACKER_SKIP):
                 print(f"SKIP filler {title[:60]}")
                 continue
-            if any(k in blob for k in TRACKER_SKIP):
-                print(f"SKIP tracker {title[:60]}")
-                continue
-            if kyiv_alert and not is_hit_story(item):
-                print(f"SKIP during alert {title[:60]}")
+            if kyiv_alert:
+                if not is_hit_story(item):
+                    print(f"SKIP silence {title[:60]}")
+                    continue
+                if not (is_kyiv_item(item) or any(k in b for k in UA_HIT)):
+                    print(f"SKIP not ua hit {title[:60]}")
+                    continue
+            elif not is_cosmos(item):
+                print(f"SKIP weak {title[:60]}")
                 continue
             filtered.append(item)
 
         unique = cluster_unique(filtered)
-        kyiv_hits = [n for n in unique if is_hit_story(n) and is_kyiv_item(n)]
-        other_hits = [n for n in unique if is_hit_story(n) and n not in kyiv_hits]
-        kyiv_mix = [n for n in unique if (not is_hit_story(n)) and is_kyiv_item(n)]
-        other_mix = [
-            n for n in unique
-            if n not in kyiv_hits and n not in other_hits and n not in kyiv_mix
-        ]
-        queue = kyiv_hits + other_hits + kyiv_mix + other_mix
-        last_auto = float(LAST_AUTO_NEWS.get("at") or 0)
-
-        for item in queue:
-            if sent >= 2:
+        for item in unique:
+            if sent >= 1:
+                break
+            if (not kyiv_alert) and last_auto and now - last_auto < 55 * 60:
+                print("HOLD hour")
                 break
             title = (item.get("title_chitko") or item.get("title") or "").strip()
             if len(title) < 8:
-                continue
-            hit = is_hit_story(item)
-            kyiv = is_kyiv_item(item)
-            if (not hit) and last_auto and now - last_auto < 12 * 60:
-                print("HOLD mix")
-                continue
-            if hit and (not kyiv) and kyiv_hits and sent == 0:
-                print(f"HOLD non-kyiv hit {title[:60]}")
                 continue
             fp_now = news_fingerprint(item)
             if any(is_same_story(fp_now, old) for old in LAST_PUB_TITLES[-40:]):
@@ -1165,8 +1180,8 @@ async def scheduled_news():
             LAST_AUTO_NEWS["at"] = now
             save_last_auto(now)
             sent += 1
-            print(f"AUTO {'HIT' if hit else 'MIX'}{' KYIV' if kyiv else ''} {title[:80]}")
-        print(f"NEWS cycle sent={sent} raw={len(raw or [])} uniq={len(unique)}")
+            print(f"AUTO COSMOS {title[:80]}")
+        print(f"NEWS cycle sent={sent} raw={len(raw or [])} uniq={len(unique)} alert={kyiv_alert}")
     except Exception as e:
         print(f"NEWS cycle fail {e}")
     finally:
@@ -1230,8 +1245,10 @@ async def main():
     scheduler.add_job(
         scheduled_news,
         "interval",
-        minutes=2,
-        misfire_grace_time=60,
+        minutes=60,
+        misfire_grace_time=120,
+        id="news",
+        replace_existing=True,
     )
     scheduler.add_job(
         scheduled_evening_digest,
