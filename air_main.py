@@ -168,38 +168,107 @@ def ua_kind(n: int, kind: str) -> str:
 def parse_course_line(raw: str) -> list:
     text = re.sub(r"<[^>]+>", "\n", raw or "")
     text = re.sub(r"&[a-z]+;", " ", text)
-    text = re.sub(r"підписатися.*", " ", text, flags=re.I)
+    text = re.sub(
+        r"(підписатися|подписаться|присылайте|присилайте|надіслати новину).*$",
+        " ",
+        text,
+        flags=re.I | re.S,
+    )
+    text = re.sub(r"єрадар\s*\|[^\n]*", " ", text, flags=re.I)
+    text = re.sub(r"повітряна тривога\|?", " ", text, flags=re.I)
     lines = [re.sub(r"\s+", " ", x).strip() for x in text.split("\n")]
-    lines = [x for x in lines if x and len(x) > 1]
-    blob = " ".join(lines).lower()
-    if any(s in blob for s in SKIP_LINE):
-        return []
-    if any(x in blob for x in (
-        "відбій", "отбой", "видихає",
-        "вінниччин", "житомирщин", "дніпропетров",
-        "харківщин", "сумщин", "волин",
-    )) and "київ" not in blob and "киев" not in blob:
+    lines = [x for x in lines if 1 < len(x) < 180]
+    if not lines:
         return []
 
     extra = (
+        ("жулян", "Жуляни"),
         ("теремк", "Теремки"),
         ("боярк", "Боярка"),
+        ("глевах", "Глеваха"),
+        ("ходосів", "Ходосівка"),
+        ("ходусів", "Ходосівка"),
+        ("ясногород", "Ясногородка"),
+        ("боров", "Борова"),
+        ("калинівк", "Калинівка"),
+        ("сквир", "Сквира"),
         ("обухов", "Обухів"),
         ("обухів", "Обухів"),
         ("крюківщин", "Крюківщина"),
-        ("крюковщин", "Крюківщина"),
         ("білогород", "Білогородка"),
-        ("белогород", "Білогородка"),
         ("димер", "Димер"),
         ("лютіж", "Лютіж"),
-        ("лютеж", "Лютіж"),
         ("підгірц", "Підгірці"),
-        ("подгірц", "Підгірці"),
         ("ірпін", "Ірпінь"),
-        ("ірпен", "Ірпінь"),
         ("гостомел", "Гостомель"),
-        ("фастів", "Фастів"),
     )
+
+    def places_in(s: str) -> list:
+        low = s.lower().replace("/", " ")
+        found = detect_districts(low) or []
+        for key, name in extra:
+            if key in low and name not in found:
+                found.append(name)
+        out = []
+        for p in found:
+            if p not in out:
+                out.append(p)
+        return out[:3]
+
+    def kind_of(s: str) -> str:
+        low = s.lower()
+        if "гучно" in low:
+            return "LOUD"
+        if any(x in low for x in ("циркон", "кінжал", "іскандер", "баліст")):
+            return "BALLISTIC"
+        if "реактив" in low:
+            return "UAV"
+        return "UAV"
+
+    items = []
+    seen = set()
+    pat = re.compile(
+        r"([1-9]|1[0-2])\s*[xх×]\s*(?:реактив\w*\s+)?"
+        r"(?:від\s+[^,\n]+?\s+на\s+)?"
+        r"([^,\n]+)",
+        flags=re.I,
+    )
+    for line in lines:
+        low = line.lower()
+        if any(x in low for x in (
+            "черкащин", "чернігівщин", "житомирщин",
+            "вінниччин", "сумщин", "волин",
+        )):
+            continue
+        if "київщина:" in low and len(line) < 18:
+            continue
+        if "інші без змін" in low:
+            continue
+        hits = list(pat.finditer(line))
+        chunks = [m.group(2) for m in hits] if hits else [line]
+        ns = [int(m.group(1)) for m in hits] if hits else []
+        for i, chunk in enumerate(chunks):
+            n = ns[i] if i < len(ns) else 1
+            nm = re.search(r"\b([1-9]|1[0-2])\b", chunk.lower())
+            if nm and not hits:
+                n = int(nm.group(1))
+            pls = places_in(chunk) or places_in(line)
+            if not pls:
+                continue
+            kind = kind_of(line)
+            for place in pls[:2]:
+                fp = f"{place.lower()}|{kind}|{n}"
+                if fp in seen:
+                    continue
+                seen.add(fp)
+                items.append({
+                    "fp": fp,
+                    "place": place,
+                    "kind": kind,
+                    "n": n,
+                    "src": "",
+                })
+    return items
 
     def places_in(s: str) -> list:
         low = s.lower()
@@ -324,7 +393,7 @@ def fetch_course_items() -> list:
     from datetime import datetime, timezone, timedelta
 
     headers = {"User-Agent": "Mozilla/5.0"}
-    max_age = timedelta(minutes=4)
+    max_age = timedelta(minutes=5)
     now = datetime.now(timezone.utc)
     found = []
     seen_now = set()
