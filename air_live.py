@@ -4,6 +4,9 @@ import re
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
 
+NEWS_EMOJI_ID = "5237977689968651276"
+CE_BOLT = "5237977689968651276"
+
 COURSE_CHATS = ("eradarrua", "war_monitor", "k_dvizh", "kievreal1")
 
 NEWS_CHATS = (
@@ -28,6 +31,8 @@ NEWS_SKIP = (
     "надіслати новину", "карта загроз", "мапа загроз",
     "#реклама", "реклама", "aliexpress", "ваканс",
 )
+
+NEWS_EMOJI_ID = "5237977689968651276"
 
 HIT_KEYS = (
     "приліт", "прилет", "влучан", "уламк", "склад",
