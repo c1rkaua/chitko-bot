@@ -1,5 +1,10 @@
 import os
 import re
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
@@ -39,26 +44,31 @@ NEWS_SKIP = (
     "vasylkiv_info",
     "підпишись", "подпишись",
     "тільки оперативна інформація",
+    "котики",
+    "без фіксації",
 )
 
-HIT_KEYS = (
-    "приліт", "прилет", "влучан", "уламк", "склад",
-    "пожеж", "загоря", "горить", "вибух",
+# Авто в канал — лише космос. Решта слабке.
+COSMOS_KEYS = (
+    "приліт", "прилет", "влучан", "уламк",
+    "склад", "пожеж", "загоря", "горить",
     "загиб", "поран", "жертв",
-    "тцк", "бусиф", "мобіліз", "мобилиз",
+    "тцк", "бусиф",
     "дтп", "аварі", "авария",
     "атб", "аврора", "нова пошт", "епіцентр", "сільпо", "новус",
-    "метро", "маршрутка", "тролейбус", "трамвай",
-    "перекрит", "перекрили",
-    "світло", "відключен", "отключен", "блекаут",
-    "обстріл", "шахед", "бпла по",
-    "корруп", "корупц", "хабар",
-    "затопи", "затоплен", "обвал",
-    "стрілянин", "стрельба",
+    "метро", "стрілянин", "стрельба",
     "евакуац",
 )
 
 SEEN_NEWS = set()
+NEWS_DAY = {"d": "", "n": 0}
+DAY_CAP = 90
+
+
+def _today():
+    if ZoneInfo:
+        return datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d")
+    return datetime.utcnow().strftime("%Y-%m-%d")
 
 
 def build_client():
@@ -78,14 +88,14 @@ def _chat_name(event) -> str:
         return "?"
 
 
-def _is_hit(text: str) -> bool:
+def _is_cosmos(text: str) -> bool:
     low = text.lower()
-    return any(k in low for k in HIT_KEYS)
+    return any(k in low for k in COSMOS_KEYS)
 
 
 def _news_fp(text: str) -> str:
     words = re.findall(r"[а-яіїєґa-z0-9]+", text.lower())
-    return " ".join(words[:12])
+    return " ".join(words[:18])
 
 
 def strip_ads(text: str) -> str:
@@ -128,19 +138,20 @@ def translate_uk(text: str) -> str:
                         "content": (
                             "Ти редактор каналу ЧІТКО.\n"
                             "Перепиши пост українською своїми словами.\n"
-                            "Цифри й факти не змінюй і не вигадуй.\n"
+                            "Цифри, імена, адреси, кількість жертв не змінюй і не вигадуй.\n"
                             "Викинь футери: INSIDER UA, Прислать контент, "
                             "Киевский Движ, Надіслати новину, підписатися, посилання t.me.\n"
                             "Не пиши «пишуть пабліки», «за даними».\n"
-                            "Перший рядок — заголовок.\n"
-                            "Далі 2–5 речень.\n"
+                            "Перший рядок — заголовок без емодзі.\n"
+                            "Далі 5–10 речень. Не обрізай факт посередині речення.\n"
+                            "Кожне речення закінчуй крапкою.\n"
                             "Лише українська. Верни тільки текст поста."
                         ),
                     },
-                    {"role": "user", "content": text[:1500]},
+                    {"role": "user", "content": text[:4000]},
                 ],
             },
-            timeout=15,
+            timeout=25,
         )
         out = (r.json()["choices"][0]["message"]["content"] or "").strip()
         print("NEWS live rewrite ok" if out else "NEWS live rewrite empty")
@@ -170,12 +181,10 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
             print("AIR live skip no siren")
             return
         for item in items:
-            place_key = (item.get("place") or "").lower()
-            fp = item["fp"]
-            if place_key in wave["seen"] or fp in wave["seen"]:
+            fp = item.get("fp") or ""
+            if fp in wave["seen"]:
                 print(f"AIR live skip {fp}")
                 continue
-            wave["seen"].add(place_key)
             wave["seen"].add(fp)
             text = format_course(item)
             text = re.sub(r"</?tg-emoji[^>]*>", "", text)
@@ -194,7 +203,7 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
     @client.on(events.NewMessage(chats=list(NEWS_CHATS)))
     async def on_news(event):
         text_in = strip_ads((event.raw_text or "").strip())
-        if len(text_in) < 25:
+        if len(text_in) < 40:
             return
         low = text_in.lower()
         if any(s in low for s in NEWS_SKIP):
@@ -203,35 +212,43 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
         if "t.me/" in low or "https://" in low:
             print(f"NEWS live skip link {_chat_name(event)}")
             return
-        if wave.get("kyiv") and not _is_hit(text_in):
+        cosmos = _is_cosmos(text_in)
+        if wave.get("kyiv") and not cosmos:
             print(f"NEWS live silence {_chat_name(event)}")
             return
-        if not _is_hit(text_in):
+        if not cosmos:
             print(f"NEWS live weak {_chat_name(event)}")
             return
+
+        day = _today()
+        if NEWS_DAY["d"] != day:
+            NEWS_DAY["d"] = day
+            NEWS_DAY["n"] = 0
+        if NEWS_DAY["n"] >= DAY_CAP:
+            print("NEWS live day cap 90")
+            return
+
         fp = _news_fp(text_in)
         if not fp or fp in SEEN_NEWS:
             print("NEWS live dup")
             return
         SEEN_NEWS.add(fp)
-        if len(SEEN_NEWS) > 200:
+        if len(SEEN_NEWS) > 400:
             SEEN_NEWS.clear()
 
         uk = translate_uk(text_in)
         lines = [x.strip() for x in uk.split("\n") if x.strip()]
         if not lines:
             return
-        title = re.sub(r"^[⚡️⚡❗!]+", "", lines[0]).strip()[:120]
-        body = "\n\n".join(lines[1:])[:700]
+        title = re.sub(r"^[⚡️⚡❗!]+", "", lines[0]).strip()[:180]
+        body = "\n\n".join(lines[1:])[:2200]
         post = f"⚡️ {title}"
         if body:
             post += "\n\n" + body
         post += "\n\nЧІТКО"
 
         from aiogram.types import MessageEntity, BufferedInputFile
-        ents = None
-        if pack_entities:
-            ents = pack_entities(post, "news")
+        ents = pack_entities(post, "news") if pack_entities else None
         if not ents:
             ents = [
                 MessageEntity(
@@ -260,6 +277,7 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
         except Exception as e:
             print(f"NEWS live media {e}")
 
+        # Підпис до фото/відео в Telegram — до 1024. Текст без медіа — до 4096.
         cap = post[:1024]
         try:
             if media_kind == "photo" and media_bytes:
@@ -281,14 +299,14 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
             else:
                 await bot.send_message(
                     channel_id,
-                    post,
+                    post[:4000],
                     parse_mode=None,
                     entities=ents,
                 )
-            print(f"NEWS live sent {_chat_name(event)} {media_kind or 'text'} {title[:40]}")
+            NEWS_DAY["n"] += 1
+            print(f"NEWS live sent {_chat_name(event)} {media_kind or 'text'} {title[:40]} day={NEWS_DAY['n']}")
         except Exception as e:
             print(f"NEWS live send {e}")
-            await bot.send_message(channel_id, post)
 
     await client.start()
     print("AIR live telethon up")

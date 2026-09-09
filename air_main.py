@@ -173,6 +173,34 @@ def ua_kind(n: int, kind: str) -> str:
         word = many
     return f"{n}× {word}"
 
+KIND_UA = {
+    "UAV": ("БПЛА", "БПЛА", "БПЛА"),
+    "BALLISTIC": ("балістика", "балістики", "балістик"),
+    "CRUISE": ("крилата ракета", "крилаті ракети", "крилатих ракет"),
+    "ZIRCON": ("Циркон", "Циркони", "Цирконів"),
+    "KINZHAL": ("Кинджал", "Кинджали", "Кинджалів"),
+    "ISKANDER": ("Іскандер", "Іскандери", "Іскандерів"),
+    "KALIBR": ("Калібр", "Калібри", "Калібрів"),
+    "X101": ("Х-101", "Х-101", "Х-101"),
+}
+
+RED_KINDS = {"BALLISTIC", "CRUISE", "ZIRCON", "KINZHAL", "ISKANDER", "KALIBR", "X101"}
+
+
+def ua_kind(n: int, kind: str) -> str:
+    one, few, many = KIND_UA.get(kind, ("ціль", "цілі", "цілей"))
+    n = int(n or 1)
+    if n % 100 in (11, 12, 13, 14):
+        word = many
+    elif n % 10 == 1:
+        word = one
+    elif n % 10 in (2, 3, 4):
+        word = few
+    else:
+        word = many
+    return f"{n}× {word}"
+
+
 def parse_course_line(raw: str) -> list:
     text = re.sub(r"<[^>]+>", "\n", raw or "")
     text = re.sub(r"&[a-z]+;", " ", text)
@@ -190,6 +218,12 @@ def parse_course_line(raw: str) -> list:
         return []
     if any(s in low_all for s in SKIP_LINE):
         return []
+    if any(x in low_all for x in (
+        "котики", "без фіксації", "не летить",
+        "полтавщин", "дніпропетров", "кіровоград",
+        "миколаїв", "кривого рогу",
+    )):
+        return []
 
     extra = (
         ("жулян", "Жуляни"),
@@ -198,7 +232,6 @@ def parse_course_line(raw: str) -> list:
         ("глевах", "Глеваха"),
         ("ходосів", "Ходосівка"),
         ("обухів", "Обухів"),
-        ("обухов", "Обухів"),
         ("білогород", "Білогородка"),
         ("димер", "Димер"),
         ("лютіж", "Лютіж"),
@@ -211,10 +244,22 @@ def parse_course_line(raw: str) -> list:
         ("фастів", "Фастів"),
         ("українк", "Українка"),
         ("бородянк", "Бородянка"),
-        ("осорк", "Осокорки"),
         ("осокорк", "Осокорки"),
         ("дарниц", "Дарниця"),
         ("дврз", "ДВРЗ"),
+        ("русанівськ", "Русанівські сади"),
+        ("віта литов", "Віта-Литовська"),
+        ("наливайк", "Наливайківка"),
+        ("миронівк", "Миронівка"),
+        ("кагарлик", "Кагарлик"),
+        ("крушинк", "Крушинка"),
+        ("макарів", "Макарів"),
+        ("щаслив", "Щасливе"),
+        ("гнідин", "Гнідин"),
+        ("правий берег", "правий берег"),
+        ("лівий берег", "лівий берег"),
+        ("печерськ", "Печерськ"),
+        ("деміїв", "Деміївка"),
     )
 
     def places_in(s: str) -> list:
@@ -230,41 +275,24 @@ def parse_course_line(raw: str) -> list:
         return out[:5]
 
     def kind_of(s: str) -> str:
-        low = (s or "").lower()
+        low = s.lower()
         if "гучно" in low:
             return "LOUD"
         if any(x in low for x in ("циркон", "zircon", "3м22")):
             return "ZIRCON"
-        if any(x in low for x in ("кінжал", "кинжал", "kinzhal")):
+        if any(x in low for x in ("кінжал", "кинжал")):
             return "KINZHAL"
-        if any(x in low for x in ("іскандер", "искандер", "iskander")):
+        if any(x in low for x in ("іскандер", "искандер")):
             return "ISKANDER"
-        if any(x in low for x in ("калібр", "калибр", "kalibr")):
+        if any(x in low for x in ("калібр", "калибр")):
             return "KALIBR"
-        if any(x in low for x in ("х-101", "x-101", "х101")):
+        if any(x in low for x in ("х-101", "x-101")):
             return "X101"
         if any(x in low for x in (
-            "баліст", "баллист",
-            "приготувал",
-            "крилат",
-            " кр ", "кр на", "кр,",
-            "червон", "🔴",
-            "ракетн", "ракета", "ракети",
-            "швидкісн",
+            "баліст", "баллист", "приготувал", "крилат",
+            " кр ", "кр на", "червон", "🔴",
         )):
             return "BALLISTIC"
-        if any(x in low for x in (
-            "реактив",
-            "сектор",
-            "вектор",
-            "шахед",
-            "бпла",
-            "дрон",
-            "жовтий",
-            "🟡",
-            "дронов",
-        )):
-            return "UAV"
         return "UAV"
 
     kind = kind_of(blob)
@@ -273,13 +301,11 @@ def parse_course_line(raw: str) -> list:
     nm = re.search(r"\b([1-9]|1[0-2])\s*[xх×]?", low_all)
     if nm:
         n = int(nm.group(1))
-
     if not places:
         if kind in RED_KINDS:
             places = ["Київ"]
         else:
             return []
-
     route = " → ".join(places)
     fp = f"{kind}|{route.lower()}|{n}"
     return [{
@@ -290,6 +316,7 @@ def parse_course_line(raw: str) -> list:
         "level": "red" if kind in RED_KINDS else "yellow",
         "src": "",
     }]
+
 
 def format_course(item: dict) -> str:
     if item["kind"] == "LOUD":
