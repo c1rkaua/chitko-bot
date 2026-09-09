@@ -160,7 +160,6 @@ def translate_uk(text: str) -> str:
         print(f"NEWS live translate {e}")
         return text
 
-
 async def start_live(bot, channel_id, parse_course_line, format_course, pack_entities, wave):
     client = build_client()
     if client is None:
@@ -199,6 +198,15 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
                 print(f"AIR live sent {fp}")
             except Exception as e:
                 print(f"AIR live send {e}")
+                continue
+            try:
+                from air_main import course_geo
+                xy = course_geo(item)
+                if xy:
+                    await bot.send_location(channel_id, latitude=xy[0], longitude=xy[1])
+                    print(f"AIR live geo {item.get('place')} {xy}")
+            except Exception as e:
+                print(f"AIR live geo {e}")
 
     @client.on(events.NewMessage(chats=list(NEWS_CHATS)))
     async def on_news(event):
@@ -277,7 +285,6 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
         except Exception as e:
             print(f"NEWS live media {e}")
 
-        # Підпис до фото/відео в Telegram — до 1024. Текст без медіа — до 4096.
         cap = post[:1024]
         try:
             if media_kind == "photo" and media_bytes:
