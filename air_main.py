@@ -564,38 +564,27 @@ async def scheduled_siren():
         except Exception as e2:
             print(f"AIR send siren fallback {e2}")
 
-async def scheduled_course():
-    official_kyiv = False
-    try:
-        official_kyiv = bool((fetch_official_alerts() or {}).get("kyiv"))
-    except Exception as e:
-        print(f"AIR official {e}")
-        return
-    if official_kyiv:
-        WAVE["kyiv"] = True
-        WAVE["ended_at"] = 0.0
-        print("AIR course poll off (live only)")
-    elif WAVE.get("ended_at") and time.time() - WAVE["ended_at"] < 90:
-        print("AIR course hold after all-clear")
-    else:
-        print("AIR course poll off (live only)")
-
 async def main():
     print("AIR bot up")
     scheduler.add_job(scheduled_siren, "interval", seconds=10, misfire_grace_time=30)
     scheduler.add_job(scheduled_course, "interval", seconds=8, misfire_grace_time=20)
     scheduler.start()
-    from air_live import start_live
-    asyncio.create_task(
-        start_live(
-            bot,
-            CHANNEL_ID,
-            parse_course_line,
-            format_course,
-            pack_entities if "pack_entities" in globals() else None,
-            WAVE,
-        )
-    )
+
+    async def _run_live():
+        try:
+            from air_live import start_live
+            await start_live(
+                bot,
+                CHANNEL_ID,
+                parse_course_line,
+                format_course,
+                pack_entities if "pack_entities" in globals() else None,
+                WAVE,
+            )
+        except Exception as e:
+            print(f"AIR live task FAIL {type(e).__name__}: {e}")
+
+    asyncio.create_task(_run_live())
     await dp.start_polling(bot)
 
 
