@@ -205,6 +205,8 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
                 if xy:
                     await bot.send_location(channel_id, latitude=xy[0], longitude=xy[1])
                     print(f"AIR live geo {item.get('place')} {xy}")
+                else:
+                    print(f"AIR live geo miss {item.get('place')}")
             except Exception as e:
                 print(f"AIR live geo {e}")
 
