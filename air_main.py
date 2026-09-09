@@ -564,6 +564,22 @@ async def scheduled_siren():
         except Exception as e2:
             print(f"AIR send siren fallback {e2}")
 
+async def scheduled_course():
+    official_kyiv = False
+    try:
+        official_kyiv = bool((fetch_official_alerts() or {}).get("kyiv"))
+    except Exception as e:
+        print(f"AIR official {e}")
+        return
+    if official_kyiv:
+        WAVE["kyiv"] = True
+        WAVE["ended_at"] = 0.0
+        print("AIR course poll off (live only)")
+    elif WAVE.get("ended_at") and time.time() - WAVE["ended_at"] < 90:
+        print("AIR course hold after all-clear")
+    else:
+        print("AIR course poll off (live only)")
+
 async def main():
     print("AIR bot up")
     scheduler.add_job(scheduled_siren, "interval", seconds=10, misfire_grace_time=30)
