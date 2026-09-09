@@ -151,8 +151,13 @@ KIND_UA = {
     "BALLISTIC": ("балістика", "балістики", "балістик"),
     "CRUISE": ("крилата ракета", "крилаті ракети", "крилатих ракет"),
     "ZIRCON": ("Циркон", "Циркони", "Цирконів"),
+    "KINZHAL": ("Кинджал", "Кинджали", "Кинджалів"),
+    "ISKANDER": ("Іскандер", "Іскандери", "Іскандерів"),
     "KALIBR": ("Калібр", "Калібри", "Калібрів"),
+    "X101": ("Х-101", "Х-101", "Х-101"),
 }
+
+RED_KINDS = {"BALLISTIC", "CRUISE", "ZIRCON", "KINZHAL", "ISKANDER", "KALIBR", "X101"}
 
 
 def ua_kind(n: int, kind: str) -> str:
@@ -179,9 +184,11 @@ def parse_course_line(raw: str) -> list:
     )
     text = re.sub(r"єрадар\s*\|[^\n]*", " ", text, flags=re.I)
     text = re.sub(r"повітряна тривога\|?", " ", text, flags=re.I)
-    lines = [re.sub(r"\s+", " ", x).strip() for x in text.split("\n")]
-    lines = [x for x in lines if 1 < len(x) < 180]
-    if not lines:
+    blob = re.sub(r"\s+", " ", text).strip()
+    low_all = blob.lower()
+    if not blob:
+        return []
+    if any(s in low_all for s in SKIP_LINE):
         return []
 
     extra = (
@@ -190,24 +197,28 @@ def parse_course_line(raw: str) -> list:
         ("боярк", "Боярка"),
         ("глевах", "Глеваха"),
         ("ходосів", "Ходосівка"),
-        ("ходусів", "Ходосівка"),
-        ("ясногород", "Ясногородка"),
-        ("боров", "Борова"),
-        ("калинівк", "Калинівка"),
-        ("сквир", "Сквира"),
-        ("обухов", "Обухів"),
         ("обухів", "Обухів"),
-        ("крюківщин", "Крюківщина"),
+        ("обухов", "Обухів"),
         ("білогород", "Білогородка"),
         ("димер", "Димер"),
         ("лютіж", "Лютіж"),
-        ("підгірц", "Підгірці"),
         ("ірпін", "Ірпінь"),
         ("гостомел", "Гостомель"),
+        ("васильк", "Васильків"),
+        ("бровар", "Бровари"),
+        ("водосховищ", "водосховище"),
+        ("чабан", "Чабани"),
+        ("фастів", "Фастів"),
+        ("українк", "Українка"),
+        ("бородянк", "Бородянка"),
+        ("осорк", "Осокорки"),
+        ("осокорк", "Осокорки"),
+        ("дарниц", "Дарниця"),
+        ("дврз", "ДВРЗ"),
     )
 
     def places_in(s: str) -> list:
-        low = s.lower().replace("/", " ")
+        low = s.lower().replace("/", " ").replace("→", " ").replace("-", " ")
         found = detect_districts(low) or []
         for key, name in extra:
             if key in low and name not in found:
@@ -216,150 +227,57 @@ def parse_course_line(raw: str) -> list:
         for p in found:
             if p not in out:
                 out.append(p)
-        return out[:3]
+        return out[:5]
 
     def kind_of(s: str) -> str:
         low = s.lower()
         if "гучно" in low:
             return "LOUD"
-        if any(x in low for x in ("циркон", "кінжал", "іскандер", "баліст")):
-            return "BALLISTIC"
-        if "реактив" in low:
-            return "UAV"
-        return "UAV"
-
-    items = []
-    seen = set()
-    pat = re.compile(
-        r"([1-9]|1[0-2])\s*[xх×]\s*(?:реактив\w*\s+)?"
-        r"(?:від\s+[^,\n]+?\s+на\s+)?"
-        r"([^,\n]+)",
-        flags=re.I,
-    )
-    for line in lines:
-        low = line.lower()
-        if any(x in low for x in (
-            "черкащин", "чернігівщин", "житомирщин",
-            "вінниччин", "сумщин", "волин",
-        )):
-            continue
-        if "київщина:" in low and len(line) < 18:
-            continue
-        if "інші без змін" in low:
-            continue
-        hits = list(pat.finditer(line))
-        chunks = [m.group(2) for m in hits] if hits else [line]
-        ns = [int(m.group(1)) for m in hits] if hits else []
-        for i, chunk in enumerate(chunks):
-            n = ns[i] if i < len(ns) else 1
-            nm = re.search(r"\b([1-9]|1[0-2])\b", chunk.lower())
-            if nm and not hits:
-                n = int(nm.group(1))
-            pls = places_in(chunk) or places_in(line)
-            if not pls:
-                continue
-            kind = kind_of(line)
-            for place in pls[:2]:
-                fp = f"{place.lower()}|{kind}|{n}"
-                if fp in seen:
-                    continue
-                seen.add(fp)
-                items.append({
-                    "fp": fp,
-                    "place": place,
-                    "kind": kind,
-                    "n": n,
-                    "src": "",
-                })
-    return items
-
-    def places_in(s: str) -> list:
-        low = s.lower()
-        found = detect_districts(low) or detect_districts(s)
-        for key, name in extra:
-            if key in low and name not in found:
-                found.append(name)
-        out = []
-        for p in found:
-            if p not in out:
-                out.append(p)
-        return out[:3]
-
-    def kind_of(s: str) -> str:
-        low = s.lower()
-        if "гучно" in low:
-            return "LOUD"
-        if any(x in low for x in ("циркон", "zircon")):
+        if any(x in low for x in ("циркон", "zircon", "3м22")):
             return "ZIRCON"
-        if any(x in low for x in ("кінжал", "кинжал", "іскандер", "баліст")):
-            return "BALLISTIC"
+        if any(x in low for x in ("кінжал", "кинжал", "kinzhal")):
+            return "KINZHAL"
+        if any(x in low for x in ("іскандер", "искандер", "iskander")):
+            return "ISKANDER"
         if any(x in low for x in ("калібр", "калибр")):
             return "KALIBR"
-        if "реактив" in low:
+        if any(x in low for x in ("х-101", "x-101", "х101")):
+            return "X101"
+        if any(x in low for x in (
+            "баліст", "баллист", "ракетн", "крилат",
+            "червон", "🔴", "червоний рівень",
+        )):
+            return "BALLISTIC"
+        if any(x in low for x in (
+            "бпла", "шахед", "shahed", "геран", "реактив",
+            "дрон", "жовтий", "🟡",
+        )):
             return "UAV"
         return "UAV"
 
-    items = []
-    seen = set()
-    pat = re.compile(
-        r"([1-9]|1[0-2])\s*[xх×]\s*(?:реактив\w*\s+)?"
-        r"(?:від\s+[^,\n]+?\s+на\s+)?"
-        r"([^,\n/]+)",
-        flags=re.I,
-    )
-    for line in lines:
-        low = line.lower()
-        if "київщина" in low and ":" in line and len(line) < 18:
-            continue
-        if "інші без змін" in low:
-            continue
-        hits = list(pat.finditer(line))
-        if hits:
-            for m in hits:
-                n = int(m.group(1))
-                chunk = m.group(2)
-                dest = re.split(r"\s+на\s+", chunk, maxsplit=1)
-                piece = dest[-1]
-                pls = places_in(piece) or places_in(line)
-                if not pls:
-                    continue
-                kind = kind_of(line)
-                for place in pls[:2]:
-                    fp = f"{place.lower()}|{kind}|{n}"
-                    if fp in seen:
-                        continue
-                    seen.add(fp)
-                    items.append({
-                        "fp": fp,
-                        "place": place,
-                        "kind": kind,
-                        "n": n,
-                        "src": "",
-                    })
-            continue
-        pls = places_in(line)
-        if not pls:
-            continue
-        if len(line) > 180:
-            continue
-        n = 1
-        nm = re.search(r"\b([1-9]|1[0-2])\b", low)
-        if nm:
-            n = int(nm.group(1))
-        kind = kind_of(line)
-        for place in pls[:1]:
-            fp = f"{place.lower()}|{kind}|{n}"
-            if fp in seen:
-                continue
-            seen.add(fp)
-            items.append({
-                "fp": fp,
-                "place": place,
-                "kind": kind,
-                "n": n,
-                "src": "",
-            })
-    return items
+    kind = kind_of(blob)
+    places = places_in(blob)
+    n = 1
+    nm = re.search(r"\b([1-9]|1[0-2])\s*[xх×]?", low_all)
+    if nm:
+        n = int(nm.group(1))
+
+    if not places:
+        if kind in RED_KINDS:
+            places = ["Київ"]
+        else:
+            return []
+
+    route = " → ".join(places)
+    fp = f"{kind}|{route.lower()}|{n}"
+    return [{
+        "fp": fp,
+        "place": route,
+        "kind": kind,
+        "n": n,
+        "level": "red" if kind in RED_KINDS else "yellow",
+        "src": "",
+    }]
 
 def format_course(item: dict) -> str:
     if item["kind"] == "LOUD":
@@ -369,24 +287,12 @@ def format_course(item: dict) -> str:
             f"Пройдіть в укриття.\n\n"
             f"ЧІТКО"
         )
-    if item["kind"] == "CLEAR":
-        return (
-            f"⚠️ Курс ⚠️\n\n"
-            f"Поки чисто над Києвом.\n"
-            f"Загроза ще не знята.\n\n"
-            f"ЧІТКО"
-        )
-    if item["kind"] == "LAUNCH":
-        return (
-            f"⚠️ Курс ⚠️\n\n"
-            f"Ще пуски.\n"
-            f"Пройдіть в укриття.\n\n"
-            f"ЧІТКО"
-        )
+    level = item.get("level") or ("red" if item["kind"] in RED_KINDS else "yellow")
+    mark = "🔴" if level == "red" else "🟡"
     line = ua_kind(item.get("n") or 1, item["kind"])
     return (
         f"⚠️ Курс ⚠️\n\n"
-        f"{line} — {item['place']}.\n"
+        f"{mark} {line} — {item['place']}.\n"
         f"Пройдіть в укриття.\n\n"
         f"ЧІТКО"
     )
