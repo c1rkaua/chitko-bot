@@ -230,7 +230,7 @@ def parse_course_line(raw: str) -> list:
         return out[:5]
 
     def kind_of(s: str) -> str:
-        low = s.lower()
+        low = (s or "").lower()
         if "гучно" in low:
             return "LOUD"
         if any(x in low for x in ("циркон", "zircon", "3м22")):
@@ -239,18 +239,30 @@ def parse_course_line(raw: str) -> list:
             return "KINZHAL"
         if any(x in low for x in ("іскандер", "искандер", "iskander")):
             return "ISKANDER"
-        if any(x in low for x in ("калібр", "калибр")):
+        if any(x in low for x in ("калібр", "калибр", "kalibr")):
             return "KALIBR"
         if any(x in low for x in ("х-101", "x-101", "х101")):
             return "X101"
         if any(x in low for x in (
-            "баліст", "баллист", "ракетн", "крилат",
-            "червон", "🔴", "червоний рівень",
+            "баліст", "баллист",
+            "приготувал",
+            "крилат",
+            " кр ", "кр на", "кр,",
+            "червон", "🔴",
+            "ракетн", "ракета", "ракети",
+            "швидкісн",
         )):
             return "BALLISTIC"
         if any(x in low for x in (
-            "бпла", "шахед", "shahed", "геран", "реактив",
-            "дрон", "жовтий", "🟡",
+            "реактив",
+            "сектор",
+            "вектор",
+            "шахед",
+            "бпла",
+            "дрон",
+            "жовтий",
+            "🟡",
+            "дронов",
         )):
             return "UAV"
         return "UAV"
