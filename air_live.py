@@ -110,20 +110,48 @@ def _is_kyiv_hit(text: str) -> bool:
     low = text.lower()
     return any(k in low for k in KYIV_HIT)
 
-
 def _news_fp(text: str) -> str:
-    low = text.lower()
-    if "16-поверх" in low or "16 поверх" in low or "16-этаж" in low:
-        return "hit-16floor-kyiv"
-    if "голими" in low and ("шахед" in low or "уламок" in low or "уламк" in low):
-        return "hit-shahid-hands"
-    if "165" in low and "бпла" in low:
-        return "hit-af-165"
-    if "золочів" in low or "золочев" in low:
-        return "hit-zolochiv"
+    low = (text or "").lower()
+    keys = (
+        ("республік", "укрнафт", "hit-respublika-azs"),
+        ("республик", "укрнафт", "hit-respublika-azs"),
+        ("республік", "заправ", "hit-respublika-azs"),
+        ("республик", "заправ", "hit-respublika-azs"),
+        ("республік", "азс", "hit-respublika-azs"),
+        ("республик", "азс", "hit-respublika-azs"),
+        ("мила", "сбу", "hit-myla-sbu"),
+        ("мил", "боєприпас", "hit-myla-sbu"),
+        ("мил", "боеприпас", "hit-myla-sbu"),
+        ("фанпліт", "склад", "hit-fanplit"),
+        ("дарницьк", "вокзал", "hit-darnytsia-vokzal"),
+        ("16-поверх", "", "hit-16floor-kyiv"),
+        ("16 поверх", "", "hit-16floor-kyiv"),
+        ("нова пошт", "приліт", "hit-np"),
+        ("атб", "приліт", "hit-atb"),
+        ("епіцентр", "приліт", "hit-epicentr"),
+    )
+    for a, b, tag in keys:
+        if a in low and (not b or b in low):
+            return tag
     words = re.findall(r"[а-яіїєґa-z0-9]+", low)
-    return " ".join(words[:12])
+    stop = {
+        "в", "у", "на", "по", "і", "та", "що", "це", "як",
+        "про", "для", "під", "при", "або", "уже", "ще",
+        "также", "этот", "эта", "это",
+    }
+    keep = [w for w in words if w not in stop]
+    return " ".join(keep[:8])
 
+
+def is_russian(text: str) -> bool:
+    low = (text or "").lower()
+    marks = (
+        "ы", "ъ", "э",
+        "сотрудник", "сообщил", "подозрени",
+        "следствие", "кроме того", "по версии",
+        "прилета", "возле",
+    )
+    return sum(1 for m in marks if m in low) >= 2
 
 def strip_ads(text: str) -> str:
     lines = []
@@ -176,7 +204,6 @@ def translate_uk(text: str) -> str:
         print(f"NEWS live translate {e}")
         return text
 
-
 async def start_live(bot, channel_id, parse_course_line, format_course, pack_entities, wave):
     print("AIR live starting")
     try:
@@ -219,16 +246,7 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
             except Exception as e:
                 print(f"AIR live send {e}")
                 return
-            try:
-                from air_main import course_geo
-                xy = course_geo(item)
-                if xy:
-                    await bot.send_location(channel_id, latitude=xy[0], longitude=xy[1])
-                    print(f"AIR live geo {item.get('place')} {xy}")
-                else:
-                    print(f"AIR live geo miss {item.get('place')}")
-            except Exception as e:
-                print(f"AIR live geo {e}")
+            print("AIR live geo off")
 
         @client.on(events.NewMessage(chats=list(NEWS_CHATS)))
         async def on_news(event):
@@ -265,6 +283,10 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
                 SEEN_NEWS.clear()
 
             uk = translate_uk(text_in)
+            if is_russian(uk):
+                print("NEWS live skip ru")
+                SEEN_NEWS.discard(fp)
+                return
             lines = [x.strip() for x in uk.split("\n") if x.strip()]
             if not lines:
                 return
