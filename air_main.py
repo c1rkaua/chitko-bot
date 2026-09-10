@@ -283,6 +283,17 @@ def ua_kind(n: int, kind: str) -> str:
         word = many
     return f"{n}× {word}"
 
+COURSE_KEEP = {
+    "київ", "позняки", "дарниця", "березняки", "видубичі",
+    "оболонь", "поділ", "солом'янка", "святошин", "нивки",
+    "шулявка", "троєщина", "дврз", "голосіїв", "печерськ",
+    "деміївка", "теремки", "осокорки", "борщагівка",
+    "лук'янівка", "куренівка", "пріорка", "академмістечко",
+    "вокзальна", "гавань", "виноградар", "мінський", "почайна",
+    "жуляни", "лівий берег", "правий берег",
+    "бровари", "бориспіль", "ірпінь", "буча",
+    "вишневе", "вишгород", "гостомель", "погреби", "білогородка",
+}
 
 def parse_course_line(raw: str) -> list:
     text = re.sub(r"<[^>]+>", "\n", raw or "")
@@ -311,39 +322,94 @@ def parse_course_line(raw: str) -> list:
     extra = (
         ("жулян", "Жуляни"),
         ("теремк", "Теремки"),
-        ("боярк", "Боярка"),
-        ("глевах", "Глеваха"),
-        ("ходосів", "Ходосівка"),
-        ("обухів", "Обухів"),
         ("білогород", "Білогородка"),
-        ("димер", "Димер"),
-        ("лютіж", "Лютіж"),
         ("ірпін", "Ірпінь"),
         ("гостомел", "Гостомель"),
-        ("васильк", "Васильків"),
         ("бровар", "Бровари"),
-        ("водосховищ", "водосховище"),
-        ("чабан", "Чабани"),
-        ("фастів", "Фастів"),
-        ("українк", "Українка"),
-        ("бородянк", "Бородянка"),
+        ("бориспіл", "Бориспіль"),
+        ("бориспол", "Бориспіль"),
+        ("вишнев", "Вишневе"),
+        ("вишгород", "Вишгород"),
+        ("погреб", "Погреби"),
+        ("буч", "Буча"),
         ("осокорк", "Осокорки"),
         ("дарниц", "Дарниця"),
         ("дврз", "ДВРЗ"),
-        ("русанівськ", "Русанівські сади"),
-        ("віта литов", "Віта-Литовська"),
-        ("наливайк", "Наливайківка"),
-        ("миронівк", "Миронівка"),
-        ("кагарлик", "Кагарлик"),
-        ("крушинк", "Крушинка"),
-        ("макарів", "Макарів"),
-        ("щаслив", "Щасливе"),
-        ("гнідин", "Гнідин"),
-        ("правий берег", "правий берег"),
-        ("лівий берег", "лівий берег"),
         ("печерськ", "Печерськ"),
         ("деміїв", "Деміївка"),
+        ("березняк", "Березняки"),
+        ("видубич", "Видубичі"),
+        ("позняк", "Позняки"),
+        ("троєщин", "Троєщина"),
+        ("троещин", "Троєщина"),
     )
+
+    def places_in(s: str) -> list:
+        low = s.lower().replace("/", " ").replace("→", " ").replace("-", " ")
+        found = detect_districts(low) or []
+        for key, name in extra:
+            if key in low and name not in found:
+                found.append(name)
+        out = []
+        for p in found:
+            if p not in out:
+                out.append(p)
+        return out[:5]
+
+    def kind_of(s: str) -> str:
+        low = s.lower()
+        if "гучно" in low:
+            return "LOUD"
+        if any(x in low for x in ("циркон", "zircon", "3м22")):
+            return "ZIRCON"
+        if any(x in low for x in ("кінжал", "кинжал")):
+            return "KINZHAL"
+        if any(x in low for x in ("іскандер", "искандер")):
+            return "ISKANDER"
+        if any(x in low for x in ("калібр", "калибр")):
+            return "KALIBR"
+        if any(x in low for x in ("х-101", "x-101")):
+            return "X101"
+        if any(x in low for x in (
+            "баліст", "баллист", "приготувал", "крилат",
+            " кр ", "кр на", "червон", "🔴",
+        )):
+            return "BALLISTIC"
+        return "UAV"
+
+    def in_keep(name: str) -> bool:
+        low = (name or "").strip().lower()
+        if low in COURSE_KEEP:
+            return True
+        return any(k in low or low in k for k in COURSE_KEEP)
+
+    kind = kind_of(blob)
+    places = places_in(blob)
+    kept = [p for p in places if in_keep(p)]
+
+    if kind in RED_KINDS:
+        if not kept:
+            kept = ["Київ"]
+    else:
+        if not kept:
+            print(f"AIR course skip oblast {places}")
+            return []
+
+    n = 1
+    nm = re.search(r"\b([1-9]|1[0-2])\s*[xх×]?", low_all)
+    if nm:
+        n = int(nm.group(1))
+
+    route = " → ".join(kept)
+    fp = f"{kind}|{route.lower()}|{n}"
+    return [{
+        "fp": fp,
+        "place": route,
+        "kind": kind,
+        "n": n,
+        "level": "red" if kind in RED_KINDS else "yellow",
+        "src": "",
+    }]
 
     def places_in(s: str) -> list:
         low = s.lower().replace("/", " ").replace("→", " ").replace("-", " ")
