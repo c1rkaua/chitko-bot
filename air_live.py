@@ -129,6 +129,7 @@ def _news_fp(text: str) -> str:
         ("нова пошт", "приліт", "hit-np"),
         ("атб", "приліт", "hit-atb"),
         ("епіцентр", "приліт", "hit-epicentr"),
+        ("азс", "шахед", "hit-respublika-azs"),
     )
     for a, b, tag in keys:
         if a in low and (not b or b in low):
@@ -142,14 +143,15 @@ def _news_fp(text: str) -> str:
     keep = [w for w in words if w not in stop]
     return " ".join(keep[:8])
 
-
 def is_russian(text: str) -> bool:
     low = (text or "").lower()
+    if any(x in low for x in ("ы", "ъ", "э")):
+        return True
     marks = (
-        "ы", "ъ", "э",
         "сотрудник", "сообщил", "подозрени",
         "следствие", "кроме того", "по версии",
-        "прилета", "возле",
+        "прилета", "прилетел", "выглядит",
+        "которую", "возле", "киеве",
     )
     return sum(1 for m in marks if m in low) >= 2
 
