@@ -72,88 +72,84 @@ KYIV_HIT = (
     "буч", "вишнев", "вишгород", "погреб",
 )
 
-SEEN_NEWS = set()
+SEEN_NEWS = []
 NEWS_DAY = {"d": "", "n": 0}
 DAY_CAP = 90
 
+STOP = {
+    "в", "у", "на", "по", "і", "та", "що", "це", "як", "про", "для",
+    "під", "при", "або", "уже", "ще", "так", "виглядає", "выглядит",
+    "также", "этот", "эта", "это", "которую", "який", "яка",
+    "повідомляють", "повідомило", "сообщили", "момент",
+}
 
-def _today():
-    if ZoneInfo:
-        return datetime.now(ZoneInfo("Europe/Kyiv")).strftime("%Y-%m-%d")
-    return datetime.utcnow().strftime("%Y-%m-%d")
+EVENT = (
+    "приліт", "прилет", "влучан", "уламок", "уламк",
+    "пожеж", "загоря", "горить", "палає", "горит",
+    "шахед", "бпла", "дрон", "ракет", "баліст",
+    "азс", "заправ", "склад", "тцк", "бусиф",
+    "дтп", "аварі", "загиб", "поран", "жертв",
+    "вибух", "взрыв",
+)
 
-
-def build_client():
-    api_id = int(os.getenv("TG_API_ID") or "0")
-    api_hash = (os.getenv("TG_API_HASH") or "").strip()
-    session = (os.getenv("TG_SESSION") or "").strip()
-    print(f"AIR live env id={bool(api_id)} hash={bool(api_hash)} sess={len(session)}")
-    if not api_id or not api_hash or not session:
-        print("AIR live skip: no TG_SESSION")
-        return None
-    return TelegramClient(StringSession(session), api_id, api_hash)
-
-
-def _chat_name(event) -> str:
-    try:
-        return event.chat.username or "?"
-    except Exception:
-        return "?"
-
-
-def _is_cosmos(text: str) -> bool:
-    low = text.lower()
-    return any(k in low for k in COSMOS_KEYS)
+PLACE = (
+    "київ", "киев", "республік", "республик", "укрнафт",
+    "мила", "мил", "дарниц", "оболон", "троєщин", "троещин",
+    "бровар", "ірпін", "буч", "вишнев", "позняк", "осокорк",
+    "голосіїв", "печерськ", "солом", "святошин", "вокзал",
+    "атб", "аврора", "епіцентр", "новапошт",
+    "миколаїв", "николаев", "сумах", "суми",
+)
 
 
-def _is_kyiv_hit(text: str) -> bool:
-    low = text.lower()
-    return any(k in low for k in KYIV_HIT)
-
-def _news_fp(text: str) -> str:
+def story_tokens(text: str) -> set:
     low = (text or "").lower()
-    keys = (
-        ("республік", "укрнафт", "hit-respublika-azs"),
-        ("республик", "укрнафт", "hit-respublika-azs"),
-        ("республік", "заправ", "hit-respublika-azs"),
-        ("республик", "заправ", "hit-respublika-azs"),
-        ("республік", "азс", "hit-respublika-azs"),
-        ("республик", "азс", "hit-respublika-azs"),
-        ("мила", "сбу", "hit-myla-sbu"),
-        ("мил", "боєприпас", "hit-myla-sbu"),
-        ("мил", "боеприпас", "hit-myla-sbu"),
-        ("фанпліт", "склад", "hit-fanplit"),
-        ("дарницьк", "вокзал", "hit-darnytsia-vokzal"),
-        ("16-поверх", "", "hit-16floor-kyiv"),
-        ("16 поверх", "", "hit-16floor-kyiv"),
-        ("нова пошт", "приліт", "hit-np"),
-        ("атб", "приліт", "hit-atb"),
-        ("епіцентр", "приліт", "hit-epicentr"),
-        ("азс", "шахед", "hit-respublika-azs"),
-    )
-    for a, b, tag in keys:
-        if a in low and (not b or b in low):
-            return tag
     words = re.findall(r"[а-яіїєґa-z0-9]+", low)
-    stop = {
-        "в", "у", "на", "по", "і", "та", "що", "це", "як",
-        "про", "для", "під", "при", "або", "уже", "ще",
-        "также", "этот", "эта", "это",
-    }
-    keep = [w for w in words if w not in stop]
-    return " ".join(keep[:8])
+    out = set()
+    for w in words:
+        if w in STOP or len(w) < 4:
+            continue
+        out.add(w)
+        for ev in EVENT:
+            if ev in w or w.startswith(ev):
+                out.add("e:" + ev)
+        for pl in PLACE:
+            if pl in w or w.startswith(pl):
+                out.add("p:" + pl)
+    return out
+
+
+def is_dup(text: str) -> bool:
+    tok = story_tokens(text)
+    if len(tok) < 3:
+        return False
+    for old in SEEN_NEWS:
+        inter = tok & old
+        if len(inter) >= 3:
+            return True
+        small = min(len(tok), len(old))
+        if small and len(inter) / small >= 0.4:
+            return True
+    return False
+
+
+def remember_story(text: str) -> None:
+    tok = story_tokens(text)
+    if tok:
+        SEEN_NEWS.append(tok)
+    if len(SEEN_NEWS) > 400:
+        del SEEN_NEWS[:200]
+
 
 def is_russian(text: str) -> bool:
     low = (text or "").lower()
-    if any(x in low for x in ("ы", "ъ", "э")):
+    ua = sum(low.count(c) for c in "іїєґ")
+    ru = sum(low.count(c) for c in "ыъэё")
+    if ru and ua == 0:
         return True
-    marks = (
-        "сотрудник", "сообщил", "подозрени",
-        "следствие", "кроме того", "по версии",
-        "прилета", "прилетел", "выглядит",
-        "которую", "возле", "киеве",
-    )
-    return sum(1 for m in marks if m in low) >= 2
+    if ru > ua:
+        return True
+    return False
 
 def strip_ads(text: str) -> str:
     lines = []
@@ -276,19 +272,23 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
                 print("NEWS live day cap 90")
                 return
 
-            fp = _news_fp(text_in)
-            if not fp or fp in SEEN_NEWS:
-                print(f"NEWS live dup {fp}")
+            if is_russian(text_in):
+                uk_try = translate_uk(text_in)
+                if is_russian(uk_try):
+                    print("NEWS live skip ru")
+                    return
+                text_in = uk_try
+
+            if is_dup(text_in):
+                print(f"NEWS live dup {text_in[:50]}")
                 return
-            SEEN_NEWS.add(fp)
-            if len(SEEN_NEWS) > 400:
-                SEEN_NEWS.clear()
+            remember_story(text_in)
 
             uk = translate_uk(text_in)
             if is_russian(uk):
-                print("NEWS live skip ru")
-                SEEN_NEWS.discard(fp)
+                print("NEWS live skip ru after rewrite")
                 return
+
             lines = [x.strip() for x in uk.split("\n") if x.strip()]
             if not lines:
                 return
@@ -365,3 +365,4 @@ async def start_live(bot, channel_id, parse_course_line, format_course, pack_ent
         await client.run_until_disconnected()
     except Exception as e:
         print(f"AIR live FAIL {type(e).__name__}: {e}")
+        
