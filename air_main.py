@@ -316,7 +316,20 @@ def parse_course_line(raw: str) -> list:
         "котики", "без фіксації", "не летить",
         "полтавщин", "дніпропетров", "кіровоград",
         "миколаїв", "кривого рогу",
+        "бандерол",
     )):
+        return []
+
+    threat_only = any(x in low_all for x in (
+        "загроза баліст", "загроза баллист",
+        "ракетн загроз", "ракетна загроза",
+        "червон рівень", "червона тривога",
+        "жовтий рівень", "жовта тривога",
+        "з брянськ", "з брянска",
+    ))
+    has_count = bool(re.search(r"\b([1-9]|1[0-2])\s*[xх×]", low_all))
+    if threat_only and not has_count:
+        print("AIR course skip threat-only")
         return []
 
     extra = (
@@ -371,9 +384,8 @@ def parse_course_line(raw: str) -> list:
         if any(x in low for x in ("х-101", "x-101")):
             return "X101"
         if any(x in low for x in (
-            "баліст", "баллист", "приготувал", "крилат",
-            " кр ", "кр на", "червон", "🔴",
-        )):
+            "баліст", "баллист", "крилат", " кр ", "кр на",
+        )) and has_count:
             return "BALLISTIC"
         return "UAV"
 
@@ -387,18 +399,17 @@ def parse_course_line(raw: str) -> list:
     places = places_in(blob)
     kept = [p for p in places if in_keep(p)]
 
-    if kind in RED_KINDS:
-        if not kept:
-            kept = ["Київ"]
-    else:
-        if not kept:
-            print(f"AIR course skip oblast {places}")
-            return []
+    if not kept:
+        print(f"AIR course skip no place {kind} {places}")
+        return []
 
     n = 1
-    nm = re.search(r"\b([1-9]|1[0-2])\s*[xх×]?", low_all)
+    nm = re.search(r"\b([1-9]|1[0-2])\s*[xх×]", low_all)
     if nm:
         n = int(nm.group(1))
+    elif kind in RED_KINDS:
+        print("AIR course skip red without count")
+        return []
 
     route = " → ".join(kept)
     fp = f"{kind}|{route.lower()}|{n}"
@@ -410,62 +421,6 @@ def parse_course_line(raw: str) -> list:
         "level": "red" if kind in RED_KINDS else "yellow",
         "src": "",
     }]
-
-    def places_in(s: str) -> list:
-        low = s.lower().replace("/", " ").replace("→", " ").replace("-", " ")
-        found = detect_districts(low) or []
-        for key, name in extra:
-            if key in low and name not in found:
-                found.append(name)
-        out = []
-        for p in found:
-            if p not in out:
-                out.append(p)
-        return out[:5]
-
-    def kind_of(s: str) -> str:
-        low = s.lower()
-        if "гучно" in low:
-            return "LOUD"
-        if any(x in low for x in ("циркон", "zircon", "3м22")):
-            return "ZIRCON"
-        if any(x in low for x in ("кінжал", "кинжал")):
-            return "KINZHAL"
-        if any(x in low for x in ("іскандер", "искандер")):
-            return "ISKANDER"
-        if any(x in low for x in ("калібр", "калибр")):
-            return "KALIBR"
-        if any(x in low for x in ("х-101", "x-101")):
-            return "X101"
-        if any(x in low for x in (
-            "баліст", "баллист", "приготувал", "крилат",
-            " кр ", "кр на", "червон", "🔴",
-        )):
-            return "BALLISTIC"
-        return "UAV"
-
-    kind = kind_of(blob)
-    places = places_in(blob)
-    n = 1
-    nm = re.search(r"\b([1-9]|1[0-2])\s*[xх×]?", low_all)
-    if nm:
-        n = int(nm.group(1))
-    if not places:
-        if kind in RED_KINDS:
-            places = ["Київ"]
-        else:
-            return []
-    route = " → ".join(places)
-    fp = f"{kind}|{route.lower()}|{n}"
-    return [{
-        "fp": fp,
-        "place": route,
-        "kind": kind,
-        "n": n,
-        "level": "red" if kind in RED_KINDS else "yellow",
-        "src": "",
-    }]
-
 
 def format_course(item: dict) -> str:
     if item["kind"] == "LOUD":
